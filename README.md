@@ -30,6 +30,21 @@ YouTubeのスーパーチャットとスーパーステッカーに反応して�
 
 ## ビルド方法
 
+### Windows（Visual Studio 2022）
+
+**初めての方へ**: [Windows向けクイックスタートガイド](QUICKSTART_WINDOWS.md)を参照してください。
+
+**詳細な手順**: [Visual Studioセットアップガイド](docs/VISUAL_STUDIO_SETUP.md)
+
+簡易版：
+```bash
+mkdir build
+cd build
+cmake -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH=C:\path\to\obs-studio\build ..
+cmake --build . --config Release
+cmake --install . --config Release
+```
+
 ### Linux / macOS
 
 ```bash
@@ -38,16 +53,6 @@ cd build
 cmake -DCMAKE_PREFIX_PATH=/path/to/obs-studio/build ..
 make
 sudo make install
-```
-
-### Windows
-
-```bash
-mkdir build
-cd build
-cmake -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH=C:\path\to\obs-studio\build ..
-cmake --build . --config Release
-cmake --install . --config Release
 ```
 
 ## セットアップ
