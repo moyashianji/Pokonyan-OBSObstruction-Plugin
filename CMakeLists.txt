@@ -4,6 +4,11 @@ project(obs-youtube-superchat-plugin VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable Qt MOC (Meta-Object Compiler) processing
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
 # Find OBS Studio
 # First check if we're using an OBS build directory
 set(OBS_BUILD_DIR_DETECTED FALSE)
