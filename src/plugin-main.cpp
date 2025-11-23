@@ -6,8 +6,10 @@
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <util/config-file.h>
+#include <util/base.h>
 #include <QAction>
 #include <QMainWindow>
+#include <QMenu>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
