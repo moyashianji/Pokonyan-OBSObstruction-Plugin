@@ -5,8 +5,50 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find OBS Studio
-find_package(libobs REQUIRED)
-find_package(obs-frontend-api REQUIRED)
+find_package(libobs QUIET)
+find_package(obs-frontend-api QUIET)
+
+# If not found, try to use installed OBS
+if(NOT libobs_FOUND OR NOT obs-frontend-api_FOUND)
+    message(STATUS "OBS packages not found via find_package, trying manual detection...")
+
+    # Common OBS installation paths
+    set(OBS_INSTALL_PATHS
+        "C:/Program Files/obs-studio"
+        "C:/Program Files (x86)/obs-studio"
+        "$ENV{ProgramFiles}/obs-studio"
+        "$ENV{ProgramW6432}/obs-studio"
+    )
+
+    foreach(path ${OBS_INSTALL_PATHS})
+        if(EXISTS "${path}")
+            set(OBS_INSTALL_DIR "${path}")
+            message(STATUS "Found OBS installation at: ${OBS_INSTALL_DIR}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT OBS_INSTALL_DIR)
+        message(FATAL_ERROR "Could not find OBS Studio installation")
+    endif()
+
+    # Create imported targets manually
+    add_library(OBS::libobs SHARED IMPORTED)
+    set_target_properties(OBS::libobs PROPERTIES
+        IMPORTED_LOCATION "${OBS_INSTALL_DIR}/bin/64bit/obs.dll"
+        IMPORTED_IMPLIB "${OBS_INSTALL_DIR}/bin/64bit/obs.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_INSTALL_DIR}/include"
+    )
+
+    add_library(OBS::obs-frontend-api SHARED IMPORTED)
+    set_target_properties(OBS::obs-frontend-api PROPERTIES
+        IMPORTED_LOCATION "${OBS_INSTALL_DIR}/bin/64bit/obs-frontend-api.dll"
+        IMPORTED_IMPLIB "${OBS_INSTALL_DIR}/bin/64bit/obs-frontend-api.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_INSTALL_DIR}/include"
+    )
+
+    message(STATUS "Using OBS from installation directory")
+endif()
 
 # Find Qt (try Qt6 first, fallback to Qt5)
 find_package(Qt6 COMPONENTS Core Widgets Network QUIET)
