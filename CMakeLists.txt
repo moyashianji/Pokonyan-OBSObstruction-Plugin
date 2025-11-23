@@ -35,6 +35,7 @@ if(OBS_BUILD_DIR_DETECTED)
     # Add required include directories
     include_directories(
         "${OBS_BUILD_DIR}/../libobs"
+        "${OBS_BUILD_DIR}/libobs/config"
         "${OBS_BUILD_DIR}/../frontend/api"
         "${OBS_BUILD_DIR}/../deps/w32-pthreads"
     )
