@@ -14,6 +14,31 @@ if exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
     set USE_VCPKG=0
 )
 
+REM Check for Qt installation
+if not "%Qt6_DIR%"=="" (
+    echo Using Qt from environment variable: %Qt6_DIR%
+    set QT_PATH=%Qt6_DIR%
+) else (
+    REM Try to find Qt automatically
+    if exist "C:\Qt\6.6.0\msvc2022_64" (
+        set QT_PATH=C:\Qt\6.6.0\msvc2022_64
+        echo Found Qt at %QT_PATH%
+    ) else if exist "C:\Qt\6.7.0\msvc2022_64" (
+        set QT_PATH=C:\Qt\6.7.0\msvc2022_64
+        echo Found Qt at %QT_PATH%
+    ) else if exist "C:\Qt6\6.6.0\msvc2022_64" (
+        set QT_PATH=C:\Qt6\6.6.0\msvc2022_64
+        echo Found Qt at %QT_PATH%
+    ) else (
+        echo Qt not found automatically
+        echo.
+        echo Please enter your Qt installation path:
+        echo Example: C:\Qt\6.6.0\msvc2022_64
+        echo.
+        set /p QT_PATH="Qt path: "
+    )
+)
+
 REM Check if OBS_BUILD_DIR is set
 if "%OBS_BUILD_DIR%"=="" (
     echo Warning: OBS_BUILD_DIR is not set
@@ -41,31 +66,45 @@ cd %BUILD_DIR%
 
 REM Configure with or without vcpkg
 echo Configuring...
+echo OBS Directory: %OBS_BUILD_DIR%
+echo Qt Directory: %QT_PATH%
+echo.
+
 if "%USE_VCPKG%"=="1" (
     echo Using vcpkg toolchain
     cmake -G "Visual Studio 17 2022" -A x64 ^
           -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-          -DCMAKE_PREFIX_PATH=%OBS_BUILD_DIR% ^
+          -DCMAKE_PREFIX_PATH="%OBS_BUILD_DIR%;%QT_PATH%" ^
           ..
 ) else (
     echo Not using vcpkg
     cmake -G "Visual Studio 17 2022" -A x64 ^
-          -DCMAKE_PREFIX_PATH=%OBS_BUILD_DIR% ^
+          -DCMAKE_PREFIX_PATH="%OBS_BUILD_DIR%;%QT_PATH%" ^
           ..
 )
 
 if %errorlevel% neq 0 (
     echo.
+    echo ========================================
     echo Configuration failed!
+    echo ========================================
     echo.
     echo Common issues:
     echo - OBS Studio directory is incorrect
-    echo - Qt6 is not installed
+    echo - Qt path is incorrect
     echo - Missing dependencies (curl, nlohmann-json)
     echo.
-    echo Try installing dependencies with vcpkg:
-    echo   cd C:\vcpkg
-    echo   .\vcpkg install qt6-base:x64-windows qt6-widgets:x64-windows curl:x64-windows
+    echo Solutions:
+    echo 1. Check OBS directory: %OBS_BUILD_DIR%
+    echo 2. Check Qt directory: %QT_PATH%
+    echo 3. Install dependencies with vcpkg:
+    echo    cd C:\vcpkg
+    echo    .\vcpkg install curl:x64-windows nlohmann-json:x64-windows
+    echo.
+    echo 4. Or install Qt5 with vcpkg (this project supports Qt5/Qt6):
+    echo    .\vcpkg install qt5-base:x64-windows qt5-widgets:x64-windows
+    echo.
+    pause
     exit /b 1
 )
 
