@@ -181,10 +181,15 @@ obs_source_t* ObstructionManager::FindSourceByName(const std::string& name) {
 }
 
 obs_sceneitem_t* ObstructionManager::FindSceneItemForSource(obs_source_t* source) {
-    obs_scene_t* currentScene = obs_frontend_get_current_scene();
-    if (!currentScene) return nullptr;
+    obs_source_t* sceneSource = obs_frontend_get_current_scene();
+    if (!sceneSource) return nullptr;
 
-    obs_source_t* sceneSource = obs_scene_get_source(currentScene);
+    obs_scene_t* currentScene = obs_scene_from_source(sceneSource);
+    if (!currentScene) {
+        obs_source_release(sceneSource);
+        return nullptr;
+    }
+
     obs_sceneitem_t* item = obs_scene_find_source(currentScene, obs_source_get_name(source));
 
     obs_source_release(sceneSource);
@@ -280,8 +285,15 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
     }
 
     // Add to current scene
-    obs_scene_t* currentScene = obs_frontend_get_current_scene();
-    if (currentScene) {
+    obs_source_t* sceneSource = obs_frontend_get_current_scene();
+    if (sceneSource) {
+        obs_scene_t* currentScene = obs_scene_from_source(sceneSource);
+        if (!currentScene) {
+            obs_source_release(sceneSource);
+            obs_source_release(source);
+            return;
+        }
+
         obs_sceneitem_t* sceneItem = obs_scene_add(currentScene, source);
 
         // Position randomly on screen
@@ -299,6 +311,8 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
         float scaleValue = 0.5f + static_cast<float>(intensity) * 0.5f;  // 0.5 to 1.0
         vec2_set(&scale, scaleValue, scaleValue);
         obs_sceneitem_set_scale(sceneItem, &scale);
+
+        obs_source_release(sceneSource);
     }
 
     // Store obstruction info
@@ -318,13 +332,17 @@ void ObstructionManager::RemoveObstructionSource(ObstructionSource& obstruction)
     if (!obstruction.active || !obstruction.source) return;
 
     // Remove from scene
-    obs_scene_t* currentScene = obs_frontend_get_current_scene();
-    if (currentScene) {
-        obs_sceneitem_t* sceneItem = obs_scene_find_source(currentScene,
-                                                           obs_source_get_name(obstruction.source));
-        if (sceneItem) {
-            obs_sceneitem_remove(sceneItem);
+    obs_source_t* sceneSource = obs_frontend_get_current_scene();
+    if (sceneSource) {
+        obs_scene_t* currentScene = obs_scene_from_source(sceneSource);
+        if (currentScene) {
+            obs_sceneitem_t* sceneItem = obs_scene_find_source(currentScene,
+                                                               obs_source_get_name(obstruction.source));
+            if (sceneItem) {
+                obs_sceneitem_remove(sceneItem);
+            }
         }
+        obs_source_release(sceneSource);
     }
 
     // Release source
