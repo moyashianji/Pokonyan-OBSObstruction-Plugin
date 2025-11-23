@@ -13,7 +13,7 @@
       "variables": [
         {
           "name": "CMAKE_PREFIX_PATH",
-          "value": "C:/obs-studio;C:/Qt/6.6.0/msvc2022_64",
+          "value": "C:/obs-studio;C:/Qt/6.10.1/msvc2022_64",
           "type": "STRING"
         },
         {

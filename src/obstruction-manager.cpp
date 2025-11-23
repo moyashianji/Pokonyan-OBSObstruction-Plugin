@@ -1,4 +1,5 @@
 #include "obstruction-manager.hpp"
+#include "effect-system.hpp"
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <graphics/vec2.h>
@@ -15,7 +16,9 @@ ObstructionManager::ObstructionManager()
     : m_currentShrinkPercentage(0.0)
     , m_enabled(true)
     , m_randomEngine(std::random_device{}())
+    , m_effectManager(std::make_unique<EffectManager>())
 {
+    blog(LOG_INFO, "[Obstruction] EffectManager initialized");
 }
 
 ObstructionManager::~ObstructionManager() {
@@ -39,6 +42,24 @@ void ObstructionManager::ApplyObstruction(double amount) {
     int numObstructions = static_cast<int>(1 + intensity * 3);  // 1-4 obstructions
     for (int i = 0; i < numObstructions; ++i) {
         AddRandomObstruction(intensity);
+    }
+
+    // Apply visual effects to main source
+    if (m_effectManager && !m_mainSourceName.empty()) {
+        obs_source_t* mainSource = FindSourceByName(m_mainSourceName);
+        if (mainSource) {
+            // Calculate effect duration based on donation amount (3-15 seconds)
+            double effectDuration = 3.0 + (intensity * 12.0);
+
+            // Apply 1-3 random effects based on intensity
+            int numEffects = static_cast<int>(1 + intensity * 2);
+            for (int i = 0; i < numEffects; ++i) {
+                m_effectManager->ApplyRandomEffect(mainSource, intensity, effectDuration);
+            }
+
+            obs_source_release(mainSource);
+            blog(LOG_INFO, "[Obstruction] Applied %d visual effects (duration: %.1fs)", numEffects, effectDuration);
+        }
     }
 }
 
@@ -149,6 +170,12 @@ void ObstructionManager::ClearAllObstructions() {
         RemoveObstructionSource(obstruction);
     }
     m_obstructions.clear();
+
+    // Clear all visual effects
+    if (m_effectManager) {
+        m_effectManager->ClearAllEffects();
+        blog(LOG_INFO, "[Recovery] Cleared all visual effects");
+    }
 
     // Reset main source scale
     m_currentShrinkPercentage = 0.0;

@@ -4,6 +4,10 @@
 #include <vector>
 #include <string>
 #include <random>
+#include <memory>
+
+// Forward declaration
+class EffectManager;
 
 struct ObstructionSource {
     obs_source_t* source;
@@ -53,4 +57,5 @@ private:
     bool m_enabled;
 
     std::mt19937 m_randomEngine;
+    std::unique_ptr<EffectManager> m_effectManager;
 };

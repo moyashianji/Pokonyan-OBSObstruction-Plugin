@@ -94,6 +94,27 @@ void SettingsDialog::SetupUI() {
     statusGroup->setLayout(statusLayout);
     mainLayout->addWidget(statusGroup);
 
+    // Test Features
+    QGroupBox* testGroup = new QGroupBox("Test Effects (No API Required)");
+    QFormLayout* testLayout = new QFormLayout();
+
+    m_testAmountSpin = new QDoubleSpinBox();
+    m_testAmountSpin->setRange(100, 50000);
+    m_testAmountSpin->setValue(5000);
+    m_testAmountSpin->setSuffix(" JPY");
+    m_testAmountSpin->setToolTip("Amount to test (in Japanese Yen)");
+    testLayout->addRow("Test Amount:", m_testAmountSpin);
+
+    QHBoxLayout* testButtonLayout = new QHBoxLayout();
+    m_testObstructionButton = new QPushButton("Test Obstruction (SuperChat)");
+    m_testRecoveryButton = new QPushButton("Test Recovery (SuperSticker)");
+    testButtonLayout->addWidget(m_testObstructionButton);
+    testButtonLayout->addWidget(m_testRecoveryButton);
+    testLayout->addRow(testButtonLayout);
+
+    testGroup->setLayout(testLayout);
+    mainLayout->addWidget(testGroup);
+
     // Control Buttons
     QHBoxLayout* controlLayout = new QHBoxLayout();
 
@@ -124,6 +145,8 @@ void SettingsDialog::SetupUI() {
     connect(m_testButton, &QPushButton::clicked, this, &SettingsDialog::OnTestConnectionClicked);
     connect(m_startButton, &QPushButton::clicked, this, &SettingsDialog::OnStartMonitoringClicked);
     connect(m_stopButton, &QPushButton::clicked, this, &SettingsDialog::OnStopMonitoringClicked);
+    connect(m_testObstructionButton, &QPushButton::clicked, this, &SettingsDialog::OnTestObstructionClicked);
+    connect(m_testRecoveryButton, &QPushButton::clicked, this, &SettingsDialog::OnTestRecoveryClicked);
     connect(m_saveButton, &QPushButton::clicked, this, &SettingsDialog::OnSaveClicked);
     connect(m_cancelButton, &QPushButton::clicked, this, &SettingsDialog::OnCancelClicked);
 }
@@ -233,4 +256,82 @@ void SettingsDialog::UpdateMonitoringState() {
         m_statusLabel->setText("Not monitoring");
         m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #f0f0f0; }");
     }
+}
+
+void SettingsDialog::OnTestObstructionClicked() {
+    // Save current settings first
+    SaveSettings();
+
+    if (!g_obstructionManager) {
+        QMessageBox::warning(this, "Error", "Obstruction manager not initialized.");
+        return;
+    }
+
+    // Check if main source is set
+    std::string mainSource = m_mainSourceEdit->text().toStdString();
+    if (mainSource.empty()) {
+        QMessageBox::warning(this, "Missing Main Source",
+                           "Please set the Main Source name before testing.\n\n"
+                           "This should be the name of the source you want to shrink (e.g., 'Game Capture').");
+        return;
+    }
+
+    // Get test amount
+    double testAmount = m_testAmountSpin->value();
+
+    // Create a simulated SuperChat event (this simulates the entire API flow)
+    DonationEvent simulatedEvent;
+    simulatedEvent.type = DonationType::SuperChat;
+    simulatedEvent.amount = testAmount;
+    simulatedEvent.displayName = "Test User";
+    simulatedEvent.message = "This is a test SuperChat!";
+    simulatedEvent.currency = "JPY";
+
+    // Call the same handler that would be called when real API data arrives
+    // This tests the complete flow: API -> Handler -> Effects
+    OnDonationReceived(simulatedEvent);
+
+    QMessageBox::information(this, "Test Applied",
+                           QString("Simulated SuperChat: %1 JPY from '%2'\n\n"
+                                   "This tests the complete API flow!\n"
+                                   "Check your OBS preview and logs.").arg(testAmount).arg("Test User"));
+}
+
+void SettingsDialog::OnTestRecoveryClicked() {
+    // Save current settings first
+    SaveSettings();
+
+    if (!g_obstructionManager) {
+        QMessageBox::warning(this, "Error", "Obstruction manager not initialized.");
+        return;
+    }
+
+    // Check if main source is set
+    std::string mainSource = m_mainSourceEdit->text().toStdString();
+    if (mainSource.empty()) {
+        QMessageBox::warning(this, "Missing Main Source",
+                           "Please set the Main Source name before testing.\n\n"
+                           "This should be the name of the source you want to expand (e.g., 'Game Capture').");
+        return;
+    }
+
+    // Get test amount
+    double testAmount = m_testAmountSpin->value();
+
+    // Create a simulated SuperSticker event (this simulates the entire API flow)
+    DonationEvent simulatedEvent;
+    simulatedEvent.type = DonationType::SuperSticker;
+    simulatedEvent.amount = testAmount;
+    simulatedEvent.displayName = "Test User";
+    simulatedEvent.message = "";
+    simulatedEvent.currency = "JPY";
+
+    // Call the same handler that would be called when real API data arrives
+    // This tests the complete flow: API -> Handler -> Effects
+    OnDonationReceived(simulatedEvent);
+
+    QMessageBox::information(this, "Test Applied",
+                           QString("Simulated SuperSticker: %1 JPY from '%2'\n\n"
+                                   "This tests the complete API flow!\n"
+                                   "Check your OBS preview and logs.").arg(testAmount).arg("Test User"));
 }

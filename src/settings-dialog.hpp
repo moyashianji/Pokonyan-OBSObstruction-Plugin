@@ -23,6 +23,8 @@ private slots:
     void OnTestConnectionClicked();
     void OnStartMonitoringClicked();
     void OnStopMonitoringClicked();
+    void OnTestObstructionClicked();
+    void OnTestRecoveryClicked();
 
 private:
     void SetupUI();
@@ -44,6 +46,11 @@ private:
     QPushButton* m_stopButton;
     QPushButton* m_saveButton;
     QPushButton* m_cancelButton;
+
+    // Test features
+    QDoubleSpinBox* m_testAmountSpin;
+    QPushButton* m_testObstructionButton;
+    QPushButton* m_testRecoveryButton;
 
     QLabel* m_statusLabel;
 };

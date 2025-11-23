@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QMainWindow>
 #include <QMenu>
+#include <QMenuBar>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
@@ -28,8 +29,13 @@ void LoadSettings() {
     config_t* config = obs_frontend_get_global_config();
     if (!config) return;
 
-    g_settings.youtubeApiKey = config_get_string(config, CONFIG_SECTION, "ApiKey");
-    g_settings.videoId = config_get_string(config, CONFIG_SECTION, "VideoId");
+    // Safely load strings (config_get_string can return nullptr)
+    const char* apiKey = config_get_string(config, CONFIG_SECTION, "ApiKey");
+    const char* videoId = config_get_string(config, CONFIG_SECTION, "VideoId");
+
+    g_settings.youtubeApiKey = apiKey ? apiKey : "";
+    g_settings.videoId = videoId ? videoId : "";
+
     g_settings.enableObstructions = config_get_bool(config, CONFIG_SECTION, "EnableObstructions");
     g_settings.enableRecovery = config_get_bool(config, CONFIG_SECTION, "EnableRecovery");
     g_settings.obstructionIntensity = config_get_double(config, CONFIG_SECTION, "ObstructionIntensity");
@@ -81,13 +87,21 @@ void OnDonationReceived(const DonationEvent& event) {
 
 // Show settings dialog
 void ShowSettingsDialog() {
-    if (!g_settingsDialog) {
-        QMainWindow* mainWindow = static_cast<QMainWindow*>(obs_frontend_get_main_window());
-        g_settingsDialog = std::make_unique<SettingsDialog>(mainWindow);
-    }
+    try {
+        if (!g_settingsDialog) {
+            QMainWindow* mainWindow = static_cast<QMainWindow*>(obs_frontend_get_main_window());
+            if (!mainWindow) {
+                blog(LOG_ERROR, "[YouTube SuperChat] Cannot create settings dialog: main window is null");
+                return;
+            }
+            g_settingsDialog = std::make_unique<SettingsDialog>(mainWindow);
+        }
 
-    g_settingsDialog->LoadSettings();
-    g_settingsDialog->exec();
+        g_settingsDialog->LoadSettings();
+        g_settingsDialog->exec();
+    } catch (const std::exception& e) {
+        blog(LOG_ERROR, "[YouTube SuperChat] Error showing settings dialog: %s", e.what());
+    }
 }
 
 // Frontend event callback
@@ -110,11 +124,19 @@ bool obs_module_load(void) {
     blog(LOG_INFO, "YouTube SuperChat Plugin v%s loaded", PLUGIN_VERSION);
 
     // Initialize managers
-    g_obstructionManager = std::make_unique<ObstructionManager>();
-    g_chatClient = std::make_unique<YouTubeChatClient>();
+    try {
+        g_obstructionManager = std::make_unique<ObstructionManager>();
+        blog(LOG_INFO, "[YouTube SuperChat] ObstructionManager initialized");
 
-    // Set donation callback
-    g_chatClient->SetDonationCallback(OnDonationReceived);
+        g_chatClient = std::make_unique<YouTubeChatClient>();
+        blog(LOG_INFO, "[YouTube SuperChat] YouTubeChatClient initialized");
+
+        // Set donation callback
+        g_chatClient->SetDonationCallback(OnDonationReceived);
+    } catch (const std::exception& e) {
+        blog(LOG_ERROR, "[YouTube SuperChat] Failed to initialize: %s", e.what());
+        return false;
+    }
 
     // Add menu item
     QMainWindow* mainWindow = static_cast<QMainWindow*>(obs_frontend_get_main_window());
@@ -124,19 +146,36 @@ bool obs_module_load(void) {
             ShowSettingsDialog();
         });
 
-        // Add to Tools menu
-        QMenu* toolsMenu = nullptr;
-        QList<QMenu*> menus = mainWindow->findChildren<QMenu*>();
-        for (QMenu* menu : menus) {
-            if (menu->title() == "Tools" || menu->title() == "ツール") {
-                toolsMenu = menu;
-                break;
-            }
-        }
+        // Get menu bar and find Tools menu
+        QMenuBar* menuBar = mainWindow->menuBar();
+        if (menuBar) {
+            QMenu* toolsMenu = nullptr;
+            QList<QAction*> menuActions = menuBar->actions();
 
-        if (toolsMenu) {
-            toolsMenu->addAction(action);
+            for (QAction* menuAction : menuActions) {
+                QMenu* menu = menuAction->menu();
+                if (menu) {
+                    QString title = menu->title();
+                    // Try different variations of the Tools menu title
+                    if (title.contains("Tools", Qt::CaseInsensitive) ||
+                        title.contains("ツール", Qt::CaseInsensitive)) {
+                        toolsMenu = menu;
+                        break;
+                    }
+                }
+            }
+
+            if (toolsMenu) {
+                toolsMenu->addAction(action);
+                blog(LOG_INFO, "[YouTube SuperChat] Menu item added to Tools menu");
+            } else {
+                blog(LOG_WARNING, "[YouTube SuperChat] Could not find Tools menu in menu bar");
+            }
+        } else {
+            blog(LOG_WARNING, "[YouTube SuperChat] Could not get menu bar");
         }
+    } else {
+        blog(LOG_WARNING, "[YouTube SuperChat] Could not get main window");
     }
 
     // Register frontend callbacks

@@ -128,6 +128,7 @@ set(PLUGIN_SOURCES
     src/youtube-chat-client.cpp
     src/obstruction-manager.cpp
     src/settings-dialog.cpp
+    src/effect-system.cpp
 )
 
 set(PLUGIN_HEADERS
@@ -135,6 +136,7 @@ set(PLUGIN_HEADERS
     src/youtube-chat-client.hpp
     src/obstruction-manager.hpp
     src/settings-dialog.hpp
+    src/effect-system.hpp
 )
 
 # Create plugin library

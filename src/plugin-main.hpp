@@ -8,6 +8,7 @@
 class YouTubeChatClient;
 class ObstructionManager;
 class SettingsDialog;
+struct DonationEvent;
 
 // Plugin module info
 #define PLUGIN_NAME "obs-youtube-superchat-plugin"
@@ -33,3 +34,6 @@ extern PluginSettings g_settings;
 // Settings functions
 void LoadSettings();
 void SaveSettings();
+
+// Donation handler (for testing)
+void OnDonationReceived(const DonationEvent& event);
