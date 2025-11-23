@@ -1,8 +1,10 @@
 #include "obstruction-manager.hpp"
 #include <obs-module.h>
+#include <obs-frontend-api.h>
 #include <graphics/vec2.h>
 #include <graphics/matrix4.h>
 #include <util/platform.h>
+#include <util/base.h>
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
@@ -23,7 +25,7 @@ ObstructionManager::~ObstructionManager() {
 void ObstructionManager::ApplyObstruction(double amount) {
     if (!m_enabled) return;
 
-    obs_log(LOG_INFO, "[Obstruction] Applying obstruction for amount: %.2f JPY", amount);
+    blog(LOG_INFO, "[Obstruction] Applying obstruction for amount: %.2f JPY", amount);
 
     // Scale effects based on donation amount
     // 100 JPY = minimal effect, 10000 JPY = maximum effect
@@ -42,13 +44,13 @@ void ObstructionManager::ApplyObstruction(double amount) {
 
 void ObstructionManager::ShrinkMainSource(double percentage) {
     if (m_mainSourceName.empty()) {
-        obs_log(LOG_WARNING, "[Obstruction] Main source name not set");
+        blog(LOG_WARNING, "[Obstruction] Main source name not set");
         return;
     }
 
     obs_source_t* source = FindSourceByName(m_mainSourceName);
     if (!source) {
-        obs_log(LOG_WARNING, "[Obstruction] Main source not found: %s", m_mainSourceName.c_str());
+        blog(LOG_WARNING, "[Obstruction] Main source not found: %s", m_mainSourceName.c_str());
         return;
     }
 
@@ -60,7 +62,7 @@ void ObstructionManager::ShrinkMainSource(double percentage) {
 
     UpdateSourceTransform(source, scale);
 
-    obs_log(LOG_INFO, "[Obstruction] Shrunk main source to %.1f%% (total shrink: %.1f%%)",
+    blog(LOG_INFO, "[Obstruction] Shrunk main source to %.1f%% (total shrink: %.1f%%)",
             scale * 100.0, m_currentShrinkPercentage);
 
     obs_source_release(source);
@@ -69,7 +71,7 @@ void ObstructionManager::ShrinkMainSource(double percentage) {
 void ObstructionManager::AddRandomObstruction(double intensity) {
     std::string assetPath = SelectRandomObstructionAsset();
     if (assetPath.empty()) {
-        obs_log(LOG_WARNING, "[Obstruction] No obstruction assets found");
+        blog(LOG_WARNING, "[Obstruction] No obstruction assets found");
         return;
     }
 
@@ -79,7 +81,7 @@ void ObstructionManager::AddRandomObstruction(double intensity) {
 void ObstructionManager::ApplyRecovery(double amount) {
     if (!m_enabled) return;
 
-    obs_log(LOG_INFO, "[Recovery] Applying recovery for amount: %.2f JPY", amount);
+    blog(LOG_INFO, "[Recovery] Applying recovery for amount: %.2f JPY", amount);
 
     // Scale recovery based on donation amount
     double intensity = std::min(amount / 10000.0, 1.0);
@@ -109,7 +111,7 @@ void ObstructionManager::ExpandMainSource(double percentage) {
 
     UpdateSourceTransform(source, scale);
 
-    obs_log(LOG_INFO, "[Recovery] Expanded main source to %.1f%% (remaining shrink: %.1f%%)",
+    blog(LOG_INFO, "[Recovery] Expanded main source to %.1f%% (remaining shrink: %.1f%%)",
             scale * 100.0, m_currentShrinkPercentage);
 
     obs_source_release(source);
@@ -125,7 +127,7 @@ void ObstructionManager::RemoveRandomObstruction() {
     }
 
     if (activeIndices.empty()) {
-        obs_log(LOG_INFO, "[Recovery] No active obstructions to remove");
+        blog(LOG_INFO, "[Recovery] No active obstructions to remove");
         return;
     }
 
@@ -136,12 +138,12 @@ void ObstructionManager::RemoveRandomObstruction() {
     RemoveObstructionSource(m_obstructions[indexToRemove]);
     m_obstructions.erase(m_obstructions.begin() + indexToRemove);
 
-    obs_log(LOG_INFO, "[Recovery] Removed obstruction (%zu active remaining)",
+    blog(LOG_INFO, "[Recovery] Removed obstruction (%zu active remaining)",
             GetActiveObstructionCount());
 }
 
 void ObstructionManager::ClearAllObstructions() {
-    obs_log(LOG_INFO, "[Recovery] Clearing all obstructions");
+    blog(LOG_INFO, "[Recovery] Clearing all obstructions");
 
     for (auto& obstruction : m_obstructions) {
         RemoveObstructionSource(obstruction);
@@ -161,12 +163,12 @@ void ObstructionManager::ClearAllObstructions() {
 
 void ObstructionManager::SetMainSourceName(const std::string& name) {
     m_mainSourceName = name;
-    obs_log(LOG_INFO, "[Obstruction] Main source set to: %s", name.c_str());
+    blog(LOG_INFO, "[Obstruction] Main source set to: %s", name.c_str());
 }
 
 void ObstructionManager::SetObstructionAssetPath(const std::string& path) {
     m_assetPath = path;
-    obs_log(LOG_INFO, "[Obstruction] Asset path set to: %s", path.c_str());
+    blog(LOG_INFO, "[Obstruction] Asset path set to: %s", path.c_str());
 }
 
 int ObstructionManager::GetActiveObstructionCount() const {
@@ -192,20 +194,15 @@ obs_sceneitem_t* ObstructionManager::FindSceneItemForSource(obs_source_t* source
 void ObstructionManager::UpdateSourceTransform(obs_source_t* source, double scale) {
     obs_sceneitem_t* sceneItem = FindSceneItemForSource(source);
     if (!sceneItem) {
-        obs_log(LOG_WARNING, "[Obstruction] Scene item not found for source");
+        blog(LOG_WARNING, "[Obstruction] Scene item not found for source");
         return;
     }
 
-    // Get current transform
-    struct obs_transform_info info;
-    obs_sceneitem_get_info(sceneItem, &info);
-
-    // Update scale
-    info.scale.x = static_cast<float>(scale);
-    info.scale.y = static_cast<float>(scale);
-
-    // Center the source
-    obs_sceneitem_set_info(sceneItem, &info);
+    // Update scale using new API
+    struct vec2 scaleVec;
+    scaleVec.x = static_cast<float>(scale);
+    scaleVec.y = static_cast<float>(scale);
+    obs_sceneitem_set_scale(sceneItem, &scaleVec);
 }
 
 std::string ObstructionManager::SelectRandomObstructionAsset() {
@@ -230,7 +227,7 @@ std::string ObstructionManager::SelectRandomObstructionAsset() {
             }
         }
     } catch (const fs::filesystem_error& e) {
-        obs_log(LOG_ERROR, "[Obstruction] Failed to read asset directory: %s", e.what());
+        blog(LOG_ERROR, "[Obstruction] Failed to read asset directory: %s", e.what());
         return "builtin:color";
     }
 
@@ -278,7 +275,7 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
     }
 
     if (!source) {
-        obs_log(LOG_ERROR, "[Obstruction] Failed to create obstruction source");
+        blog(LOG_ERROR, "[Obstruction] Failed to create obstruction source");
         return;
     }
 
@@ -313,7 +310,7 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
 
     m_obstructions.push_back(obstruction);
 
-    obs_log(LOG_INFO, "[Obstruction] Created %s obstruction (total: %d)",
+    blog(LOG_INFO, "[Obstruction] Created %s obstruction (total: %d)",
             type.c_str(), GetActiveObstructionCount());
 }
 

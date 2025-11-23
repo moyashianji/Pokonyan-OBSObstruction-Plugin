@@ -1,5 +1,6 @@
 #include "youtube-chat-client.hpp"
 #include <obs-module.h>
+#include <util/base.h>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -37,11 +38,11 @@ void YouTubeChatClient::Start() {
     if (m_isRunning) return;
 
     if (m_apiKey.empty() || m_videoId.empty()) {
-        obs_log(LOG_WARNING, "[YouTube Chat] Cannot start: API key or Video ID not set");
+        blog(LOG_WARNING, "[YouTube Chat] Cannot start: API key or Video ID not set");
         return;
     }
 
-    obs_log(LOG_INFO, "[YouTube Chat] Starting chat monitoring for video: %s", m_videoId.c_str());
+    blog(LOG_INFO, "[YouTube Chat] Starting chat monitoring for video: %s", m_videoId.c_str());
 
     // First, get the live chat ID
     FetchLiveChatId();
@@ -53,7 +54,7 @@ void YouTubeChatClient::Start() {
 void YouTubeChatClient::Stop() {
     if (!m_isRunning) return;
 
-    obs_log(LOG_INFO, "[YouTube Chat] Stopping chat monitoring");
+    blog(LOG_INFO, "[YouTube Chat] Stopping chat monitoring");
     m_pollTimer->stop();
     m_isRunning = false;
 }
@@ -81,14 +82,14 @@ void YouTubeChatClient::FetchLiveChatId() {
                     QJsonObject liveDetails = item["liveStreamingDetails"].toObject();
                     if (liveDetails.contains("activeLiveChatId")) {
                         m_liveChatId = liveDetails["activeLiveChatId"].toString().toStdString();
-                        obs_log(LOG_INFO, "[YouTube Chat] Live chat ID: %s", m_liveChatId.c_str());
+                        blog(LOG_INFO, "[YouTube Chat] Live chat ID: %s", m_liveChatId.c_str());
                     } else {
-                        obs_log(LOG_WARNING, "[YouTube Chat] No active live chat found");
+                        blog(LOG_WARNING, "[YouTube Chat] No active live chat found");
                     }
                 }
             }
         } else {
-            obs_log(LOG_ERROR, "[YouTube Chat] Failed to fetch live chat ID: %s",
+            blog(LOG_ERROR, "[YouTube Chat] Failed to fetch live chat ID: %s",
                     reply->errorString().toStdString().c_str());
         }
         reply->deleteLater();
@@ -151,7 +152,7 @@ void YouTubeChatClient::OnChatDataReceived() {
 void YouTubeChatClient::OnNetworkError(QNetworkReply::NetworkError error) {
     QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
     if (reply) {
-        obs_log(LOG_ERROR, "[YouTube Chat] Network error: %s", reply->errorString().toStdString().c_str());
+        blog(LOG_ERROR, "[YouTube Chat] Network error: %s", reply->errorString().toStdString().c_str());
     }
 }
 

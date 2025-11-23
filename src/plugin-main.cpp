@@ -60,7 +60,7 @@ void SaveSettings() {
 void OnDonationReceived(const DonationEvent& event) {
     if (!g_obstructionManager) return;
 
-    obs_log(LOG_INFO, "[YouTube SuperChat] Donation received: %s - %.2f %s (Type: %s)",
+    blog(LOG_INFO, "[YouTube SuperChat] Donation received: %s - %.2f %s (Type: %s)",
             event.displayName.c_str(),
             event.amount,
             event.currency.c_str(),
@@ -107,7 +107,7 @@ void OnFrontendEvent(enum obs_frontend_event event, void* private_data) {
 }
 
 bool obs_module_load(void) {
-    obs_log(LOG_INFO, "YouTube SuperChat Plugin v%s loaded", PLUGIN_VERSION);
+    blog(LOG_INFO, "YouTube SuperChat Plugin v%s loaded", PLUGIN_VERSION);
 
     // Initialize managers
     g_obstructionManager = std::make_unique<ObstructionManager>();
@@ -146,7 +146,7 @@ bool obs_module_load(void) {
 }
 
 void obs_module_unload(void) {
-    obs_log(LOG_INFO, "YouTube SuperChat Plugin unloaded");
+    blog(LOG_INFO, "YouTube SuperChat Plugin unloaded");
 
     // Stop chat monitoring
     if (g_chatClient && g_chatClient->IsRunning()) {
