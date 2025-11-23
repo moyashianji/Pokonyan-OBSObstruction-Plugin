@@ -5,8 +5,48 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find OBS Studio
-find_package(libobs QUIET)
-find_package(obs-frontend-api QUIET)
+# First check if we're using an OBS build directory
+set(OBS_BUILD_DIR_DETECTED FALSE)
+foreach(prefix_path ${CMAKE_PREFIX_PATH})
+    if(EXISTS "${prefix_path}/libobs/Release/obs.lib")
+        set(OBS_BUILD_DIR "${prefix_path}")
+        set(OBS_BUILD_DIR_DETECTED TRUE)
+        message(STATUS "Detected OBS build directory: ${OBS_BUILD_DIR}")
+        break()
+    endif()
+endforeach()
+
+if(OBS_BUILD_DIR_DETECTED)
+    # Use OBS from build directory directly
+    add_library(OBS::libobs SHARED IMPORTED)
+    set_target_properties(OBS::libobs PROPERTIES
+        IMPORTED_LOCATION "${OBS_BUILD_DIR}/libobs/Release/obs.dll"
+        IMPORTED_IMPLIB "${OBS_BUILD_DIR}/libobs/Release/obs.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_BUILD_DIR}/../libobs"
+    )
+
+    add_library(OBS::obs-frontend-api SHARED IMPORTED)
+    set_target_properties(OBS::obs-frontend-api PROPERTIES
+        IMPORTED_LOCATION "${OBS_BUILD_DIR}/frontend/api/Release/obs-frontend-api.dll"
+        IMPORTED_IMPLIB "${OBS_BUILD_DIR}/frontend/api/Release/obs-frontend-api.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_BUILD_DIR}/../frontend/api"
+    )
+
+    # Add required include directories
+    include_directories(
+        "${OBS_BUILD_DIR}/../libobs"
+        "${OBS_BUILD_DIR}/../frontend/api"
+        "${OBS_BUILD_DIR}/../deps/w32-pthreads"
+    )
+
+    set(libobs_FOUND TRUE)
+    set(obs-frontend-api_FOUND TRUE)
+    message(STATUS "Using OBS from build directory")
+else()
+    # Try find_package
+    find_package(libobs QUIET)
+    find_package(obs-frontend-api QUIET)
+endif()
 
 # If not found, try to use installed OBS
 if(NOT libobs_FOUND OR NOT obs-frontend-api_FOUND)
