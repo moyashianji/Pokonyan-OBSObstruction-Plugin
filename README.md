@@ -34,10 +34,20 @@ YouTubeのスーパーチャットとスーパーステッカーに反応して�
 
 **📘 ガイド:**
 - 🚀 **初めての方**: [Windows向けクイックスタートガイド](QUICKSTART_WINDOWS.md)
-- 📖 **詳細な手順**: [Visual Studioセットアップガイド](docs/VISUAL_STUDIO_SETUP.md)
+- 💻 **Visual Studio GUIでビルド**: [Visual Studio GUIビルドガイド](docs/VISUAL_STUDIO_GUI_BUILD.md) ⭐おすすめ
+- 📖 **コマンドライン詳細**: [Visual Studioセットアップガイド](docs/VISUAL_STUDIO_SETUP.md)
 - 🔧 **vcpkgで問題が発生**: [vcpkgトラブルシューティング](docs/VCPKG_TROUBLESHOOTING.md)
 
-簡易版（vcpkg使用）：
+**方法1: Visual Studio GUI（最も簡単！）**
+
+1. Visual Studioでリポジトリをクローン
+2. `CMakeSettings.json` のパスを編集（OBS、Qt、vcpkg）
+3. **Ctrl+Shift+B** でビルド
+
+詳細: [Visual Studio GUIビルドガイド](docs/VISUAL_STUDIO_GUI_BUILD.md)
+
+**方法2: コマンドライン**
+
 ```bash
 # vcpkgで依存関係をインストール後
 mkdir build
@@ -49,7 +59,8 @@ cmake -G "Visual Studio 17 2022" -A x64 ^
 cmake --build . --config Release
 ```
 
-または`build.bat`を実行（推奨）：
+**方法3: build.batスクリプト**
+
 ```batch
 .\build.bat
 ```
