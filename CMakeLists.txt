@@ -8,8 +8,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(libobs REQUIRED)
 find_package(obs-frontend-api REQUIRED)
 
-# Find Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network)
+# Find Qt (try Qt6 first, fallback to Qt5)
+find_package(Qt6 COMPONENTS Core Widgets Network QUIET)
+if(Qt6_FOUND)
+    message(STATUS "Using Qt6")
+    set(QT_VERSION 6)
+else()
+    message(STATUS "Qt6 not found, trying Qt5...")
+    find_package(Qt5 REQUIRED COMPONENTS Core Widgets Network)
+    message(STATUS "Using Qt5")
+    set(QT_VERSION 5)
+endif()
 
 # Find cURL for HTTP requests
 find_package(CURL REQUIRED)
@@ -52,15 +61,27 @@ target_include_directories(obs-youtube-superchat-plugin PRIVATE
 )
 
 # Link libraries
-target_link_libraries(obs-youtube-superchat-plugin
-    OBS::libobs
-    OBS::obs-frontend-api
-    Qt6::Core
-    Qt6::Widgets
-    Qt6::Network
-    CURL::libcurl
-    nlohmann_json::nlohmann_json
-)
+if(QT_VERSION EQUAL 6)
+    target_link_libraries(obs-youtube-superchat-plugin
+        OBS::libobs
+        OBS::obs-frontend-api
+        Qt6::Core
+        Qt6::Widgets
+        Qt6::Network
+        CURL::libcurl
+        nlohmann_json::nlohmann_json
+    )
+else()
+    target_link_libraries(obs-youtube-superchat-plugin
+        OBS::libobs
+        OBS::obs-frontend-api
+        Qt5::Core
+        Qt5::Widgets
+        Qt5::Network
+        CURL::libcurl
+        nlohmann_json::nlohmann_json
+    )
+endif()
 
 # Set install directory
 if(WIN32)

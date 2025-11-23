@@ -31,13 +31,44 @@ cd vcpkg
 
 ### ステップ3: 必要なライブラリをインストール
 
-同じPowerShellで続けて実行（**30-60分かかります**、コーヒータイム☕）：
+同じPowerShellで続けて実行。
+
+#### まず、vcpkgを最新版に更新
 
 ```powershell
-# Qt6のインストール（時間がかかります）
-.\vcpkg install qt6-base:x64-windows qt6-widgets:x64-windows
+git pull
+.\bootstrap-vcpkg.bat
+```
 
-# その他のライブラリ
+#### 利用可能なQtパッケージを確認
+
+```powershell
+.\vcpkg search qt6
+```
+
+#### Qtをインストール（**20-60分かかります**、コーヒータイム☕）
+
+以下のいずれかを実行：
+
+**Qt6の場合（推奨）:**
+```powershell
+# 新しいvcpkgの場合
+.\vcpkg install qt:x64-windows
+
+# または従来の方法
+.\vcpkg install qt6-base:x64-windows qt6-widgets:x64-windows qt6-network:x64-windows
+```
+
+**Qt6が見つからない場合はQt5を使用:**
+```powershell
+.\vcpkg install qt5-base:x64-windows qt5-widgets:x64-windows qt5-network:x64-windows
+```
+
+**注意**: `qt6-base does not exist`エラーが出る場合は、[vcpkgトラブルシューティング](docs/VCPKG_TROUBLESHOOTING.md)を参照してください。
+
+#### その他のライブラリ
+
+```powershell
 .\vcpkg install curl:x64-windows nlohmann-json:x64-windows
 ```
 
@@ -147,17 +178,25 @@ YouTube Liveで配信を開始すると、スーパーチャット/スーパー�
 **A**: Visual Studioの「CMake用のC++ツール」がインストールされているか確認
 - Visual Studio Installer → 変更 → 個別のコンポーネント → CMake
 
-### Q: 「Qt6が見つかりません」エラー
+### Q: 「qt6-base does not exist」エラー
 
-**A**: vcpkgでQt6がインストールされているか確認
+**A**: vcpkgのパッケージ名が異なる可能性があります。以下を試してください：
+
 ```powershell
 cd C:\vcpkg
-.\vcpkg list | findstr qt6
+
+# vcpkgを最新版に更新
+git pull
+.\bootstrap-vcpkg.bat
+
+# 利用可能なパッケージを検索
+.\vcpkg search qt6
+
+# Qt6が見つからない場合はQt5を使用（このプロジェクトはQt5/Qt6両対応）
+.\vcpkg install qt5-base:x64-windows qt5-widgets:x64-windows qt5-network:x64-windows
 ```
-表示されない場合は再インストール：
-```powershell
-.\vcpkg install qt6-base:x64-windows qt6-widgets:x64-windows
-```
+
+詳細は [vcpkgトラブルシューティング](docs/VCPKG_TROUBLESHOOTING.md) を参照してください。
 
 ### Q: 「libobs.libが見つかりません」エラー
 

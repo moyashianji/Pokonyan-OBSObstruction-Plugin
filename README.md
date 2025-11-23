@@ -32,17 +32,26 @@ YouTubeのスーパーチャットとスーパーステッカーに反応して�
 
 ### Windows（Visual Studio 2022）
 
-**初めての方へ**: [Windows向けクイックスタートガイド](QUICKSTART_WINDOWS.md)を参照してください。
+**📘 ガイド:**
+- 🚀 **初めての方**: [Windows向けクイックスタートガイド](QUICKSTART_WINDOWS.md)
+- 📖 **詳細な手順**: [Visual Studioセットアップガイド](docs/VISUAL_STUDIO_SETUP.md)
+- 🔧 **vcpkgで問題が発生**: [vcpkgトラブルシューティング](docs/VCPKG_TROUBLESHOOTING.md)
 
-**詳細な手順**: [Visual Studioセットアップガイド](docs/VISUAL_STUDIO_SETUP.md)
-
-簡易版：
+簡易版（vcpkg使用）：
 ```bash
+# vcpkgで依存関係をインストール後
 mkdir build
 cd build
-cmake -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH=C:\path\to\obs-studio\build ..
+cmake -G "Visual Studio 17 2022" -A x64 ^
+      -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake ^
+      -DCMAKE_PREFIX_PATH=C:\obs-studio ^
+      ..
 cmake --build . --config Release
-cmake --install . --config Release
+```
+
+または`build.bat`を実行（推奨）：
+```batch
+.\build.bat
 ```
 
 ### Linux / macOS
