@@ -129,6 +129,9 @@ set(PLUGIN_SOURCES
     src/obstruction-manager.cpp
     src/settings-dialog.cpp
     src/effect-system.cpp
+    src/effect-config.cpp
+    src/effect-config-dialog.cpp
+    src/effect-config-manager.cpp
 )
 
 set(PLUGIN_HEADERS
@@ -137,6 +140,9 @@ set(PLUGIN_HEADERS
     src/obstruction-manager.hpp
     src/settings-dialog.hpp
     src/effect-system.hpp
+    src/effect-config.hpp
+    src/effect-config-dialog.hpp
+    src/effect-config-manager.hpp
 )
 
 # Create plugin library

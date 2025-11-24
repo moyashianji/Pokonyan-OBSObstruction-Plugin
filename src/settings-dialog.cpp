@@ -1,4 +1,6 @@
 #include "settings-dialog.hpp"
+#include "effect-config-manager.hpp"
+#include "effect-config.hpp"
 #include "plugin-main.hpp"
 #include "youtube-chat-client.hpp"
 #include "obstruction-manager.hpp"
@@ -17,7 +19,8 @@ SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("YouTube SuperChat Plugin Settings");
-    setMinimumWidth(600);
+    setMinimumSize(900, 700);
+    resize(1000, 800);
     SetupUI();
 }
 
@@ -26,6 +29,249 @@ SettingsDialog::~SettingsDialog() {
 
 void SettingsDialog::SetupUI() {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+    // Apply modern styling with dark theme
+    QString styleSheet = R"(
+        QDialog {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #2c3e50, stop:1 #34495e);
+        }
+
+        QWidget {
+            color: #ecf0f1;
+        }
+
+        QTabWidget::pane {
+            border: 2px solid #34495e;
+            background-color: #2c3e50;
+            border-radius: 8px;
+        }
+
+        QTabBar::tab {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #34495e, stop:1 #2c3e50);
+            color: #bdc3c7;
+            padding: 12px 24px;
+            margin-right: 2px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            font-weight: bold;
+            font-size: 11pt;
+            border: 1px solid #1a252f;
+        }
+
+        QTabBar::tab:selected {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3498db, stop:1 #2980b9);
+            color: white;
+            border-bottom: 3px solid #1abc9c;
+        }
+
+        QTabBar::tab:hover:!selected {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3d5a73, stop:1 #34495e);
+            color: #ecf0f1;
+        }
+
+        QGroupBox {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #34495e, stop:1 #2c3e50);
+            border: 2px solid #1abc9c;
+            border-radius: 8px;
+            margin-top: 12px;
+            padding-top: 16px;
+            font-weight: bold;
+            font-size: 8pt;
+            color: #1abc9c;
+        }
+
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 15px;
+            top: 5px;
+            padding: 0 8px;
+            color: #1abc9c;
+            background-color: #2c3e50;
+        }
+
+        QLabel {
+            color: #ecf0f1;
+            font-size: 8pt;
+        }
+
+        QPushButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3498db, stop:1 #2980b9);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 8pt;
+            min-width: 90px;
+        }
+
+        QPushButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #5dade2, stop:1 #3498db);
+        }
+
+        QPushButton:pressed {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #2980b9, stop:1 #21618c);
+        }
+
+        QPushButton:disabled {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #7f8c8d, stop:1 #5d6d7e);
+            color: #95a5a6;
+        }
+
+        QPushButton#testButton,
+        QPushButton#testObstructionButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #2ecc71, stop:1 #27ae60);
+        }
+
+        QPushButton#testButton:hover,
+        QPushButton#testObstructionButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #58d68d, stop:1 #2ecc71);
+        }
+
+        QPushButton#stopButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #e74c3c, stop:1 #c0392b);
+        }
+
+        QPushButton#stopButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #ec7063, stop:1 #e74c3c);
+        }
+
+        QPushButton#saveButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #1abc9c, stop:1 #16a085);
+            padding: 12px 36px;
+            font-size: 10pt;
+        }
+
+        QPushButton#saveButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #48c9b0, stop:1 #1abc9c);
+        }
+
+        QPushButton#cancelButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #95a5a6, stop:1 #7f8c8d);
+            padding: 12px 36px;
+            font-size: 10pt;
+        }
+
+        QPushButton#cancelButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #bdc3c7, stop:1 #95a5a6);
+        }
+
+        QLineEdit, QSpinBox, QDoubleSpinBox {
+            padding: 6px;
+            border: 2px solid #34495e;
+            border-radius: 4px;
+            background-color: #1a252f;
+            color: #ecf0f1;
+            selection-background-color: #3498db;
+            selection-color: white;
+            font-size: 8pt;
+        }
+
+        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+            border: 2px solid #1abc9c;
+            background-color: #21313f;
+        }
+
+        QLineEdit::placeholder {
+            color: #7f8c8d;
+        }
+
+        QSpinBox::up-button, QDoubleSpinBox::up-button {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3498db, stop:1 #2980b9);
+            border-top-right-radius: 4px;
+        }
+
+        QSpinBox::down-button, QDoubleSpinBox::down-button {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3498db, stop:1 #2980b9);
+            border-bottom-right-radius: 4px;
+        }
+
+        QCheckBox {
+            spacing: 8px;
+            color: #ecf0f1;
+            font-size: 9pt;
+        }
+
+        QCheckBox::indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #34495e;
+            background-color: #1a252f;
+        }
+
+        QCheckBox::indicator:hover {
+            border: 2px solid #1abc9c;
+        }
+
+        QCheckBox::indicator:checked {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #1abc9c, stop:1 #16a085);
+            border-color: #1abc9c;
+        }
+
+        QLabel#statusLabel {
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 10pt;
+        }
+
+        QComboBox {
+            padding: 6px;
+            border: 2px solid #34495e;
+            border-radius: 6px;
+            background-color: #1a252f;
+            color: #ecf0f1;
+            font-size: 9pt;
+        }
+
+        QComboBox:focus {
+            border: 2px solid #1abc9c;
+        }
+
+        QComboBox::drop-down {
+            border: none;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #3498db, stop:1 #2980b9);
+        }
+
+        QComboBox QAbstractItemView {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            selection-background-color: #3498db;
+            border: 2px solid #1abc9c;
+        }
+    )";
+
+    setStyleSheet(styleSheet);
+
+    // Create tab widget
+    m_tabWidget = new QTabWidget();
+
+    // ===== Tab 1: Basic Settings =====
+    QWidget* basicTab = new QWidget();
+    QVBoxLayout* basicLayout = new QVBoxLayout(basicTab);
 
     // YouTube API Settings
     QGroupBox* apiGroup = new QGroupBox("YouTube API Settings");
@@ -41,7 +287,7 @@ void SettingsDialog::SetupUI() {
     apiLayout->addRow("Video ID:", m_videoIdEdit);
 
     apiGroup->setLayout(apiLayout);
-    mainLayout->addWidget(apiGroup);
+    basicLayout->addWidget(apiGroup);
 
     // OBS Settings
     QGroupBox* obsGroup = new QGroupBox("OBS Settings");
@@ -52,7 +298,7 @@ void SettingsDialog::SetupUI() {
     obsLayout->addRow("Main Source:", m_mainSourceEdit);
 
     obsGroup->setLayout(obsLayout);
-    mainLayout->addWidget(obsGroup);
+    basicLayout->addWidget(obsGroup);
 
     // Effect Settings
     QGroupBox* effectGroup = new QGroupBox("Effect Settings");
@@ -81,18 +327,19 @@ void SettingsDialog::SetupUI() {
     effectLayout->addRow("Recovery Intensity:", m_recoveryIntensitySpin);
 
     effectGroup->setLayout(effectLayout);
-    mainLayout->addWidget(effectGroup);
+    basicLayout->addWidget(effectGroup);
 
     // Status
     QGroupBox* statusGroup = new QGroupBox("Status");
     QVBoxLayout* statusLayout = new QVBoxLayout();
 
-    m_statusLabel = new QLabel("Not monitoring");
-    m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #f0f0f0; }");
+    m_statusLabel = new QLabel("モニタリング停止中");
+    m_statusLabel->setObjectName("statusLabel");
+    m_statusLabel->setStyleSheet("background-color: #34495e; color: #95a5a6; border: 2px solid #7f8c8d;");
     statusLayout->addWidget(m_statusLabel);
 
     statusGroup->setLayout(statusLayout);
-    mainLayout->addWidget(statusGroup);
+    basicLayout->addWidget(statusGroup);
 
     // Test Features
     QGroupBox* testGroup = new QGroupBox("Test Effects (No API Required)");
@@ -106,35 +353,58 @@ void SettingsDialog::SetupUI() {
     testLayout->addRow("Test Amount:", m_testAmountSpin);
 
     QHBoxLayout* testButtonLayout = new QHBoxLayout();
-    m_testObstructionButton = new QPushButton("Test Obstruction (SuperChat)");
-    m_testRecoveryButton = new QPushButton("Test Recovery (SuperSticker)");
+    m_testObstructionButton = new QPushButton("テスト実行 (SuperChat)");
+    m_testObstructionButton->setObjectName("testObstructionButton");
+    m_testRecoveryButton = new QPushButton("テスト実行 (SuperSticker)");
+    m_testRecoveryButton->setStyleSheet("background-color: #FF9800;");
     testButtonLayout->addWidget(m_testObstructionButton);
     testButtonLayout->addWidget(m_testRecoveryButton);
     testLayout->addRow(testButtonLayout);
 
     testGroup->setLayout(testLayout);
-    mainLayout->addWidget(testGroup);
+    basicLayout->addWidget(testGroup);
 
     // Control Buttons
     QHBoxLayout* controlLayout = new QHBoxLayout();
 
-    m_testButton = new QPushButton("Test Connection");
-    m_startButton = new QPushButton("Start Monitoring");
-    m_stopButton = new QPushButton("Stop Monitoring");
+    m_testButton = new QPushButton("接続テスト");
+    m_testButton->setObjectName("testButton");
+    m_startButton = new QPushButton("モニタリング開始");
+    m_stopButton = new QPushButton("モニタリング停止");
+    m_stopButton->setObjectName("stopButton");
     m_stopButton->setEnabled(false);
 
     controlLayout->addWidget(m_testButton);
     controlLayout->addWidget(m_startButton);
     controlLayout->addWidget(m_stopButton);
 
-    mainLayout->addLayout(controlLayout);
+    basicLayout->addLayout(controlLayout);
+    basicLayout->addStretch();
+
+    // ===== Tab 2: Effect Configurations =====
+    QWidget* effectConfigTab = new QWidget();
+    QVBoxLayout* effectConfigLayout = new QVBoxLayout(effectConfigTab);
+
+    m_effectConfigManager = new EffectConfigManager();
+    connect(m_effectConfigManager, &EffectConfigManager::ConfigurationsChanged,
+            this, &SettingsDialog::OnEffectConfigsChanged);
+
+    effectConfigLayout->addWidget(m_effectConfigManager);
+
+    // Add tabs to tab widget
+    m_tabWidget->addTab(basicTab, "基本設定");
+    m_tabWidget->addTab(effectConfigTab, "エフェクト設定");
+
+    mainLayout->addWidget(m_tabWidget);
 
     // Dialog Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
 
-    m_saveButton = new QPushButton("Save");
-    m_cancelButton = new QPushButton("Cancel");
+    m_saveButton = new QPushButton("保存");
+    m_saveButton->setObjectName("saveButton");
+    m_cancelButton = new QPushButton("キャンセル");
+    m_cancelButton->setObjectName("cancelButton");
 
     buttonLayout->addWidget(m_saveButton);
     buttonLayout->addWidget(m_cancelButton);
@@ -159,6 +429,13 @@ void SettingsDialog::LoadSettings() {
     m_obstructionIntensitySpin->setValue(g_settings.obstructionIntensity);
     m_recoveryIntensitySpin->setValue(g_settings.recoveryIntensity);
 
+    // Load effect configurations
+    if (m_effectConfigManager) {
+        EffectConfigList configs;
+        configs.FromVariantList(g_settings.effectConfigurations);
+        m_effectConfigManager->LoadConfigurations(configs);
+    }
+
     UpdateMonitoringState();
 }
 
@@ -169,6 +446,12 @@ void SettingsDialog::SaveSettings() {
     g_settings.enableRecovery = m_enableRecoveryCheck->isChecked();
     g_settings.obstructionIntensity = m_obstructionIntensitySpin->value();
     g_settings.recoveryIntensity = m_recoveryIntensitySpin->value();
+
+    // Save effect configurations
+    if (m_effectConfigManager) {
+        EffectConfigList configs = m_effectConfigManager->GetConfigurations();
+        g_settings.effectConfigurations = configs.ToVariantList();
+    }
 
     ::SaveSettings();
 
@@ -225,8 +508,8 @@ void SettingsDialog::OnStartMonitoringClicked() {
         g_chatClient->Start();
         UpdateMonitoringState();
 
-        m_statusLabel->setText("Monitoring active - Waiting for donations...");
-        m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #90EE90; }");
+        m_statusLabel->setText("🟢 モニタリング中 - 投げ銭を待機しています...");
+        m_statusLabel->setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #27ae60, stop:1 #2ecc71); color: white; border: 2px solid #1abc9c;");
         m_startButton->setEnabled(false);
         m_stopButton->setEnabled(true);
     }
@@ -237,8 +520,8 @@ void SettingsDialog::OnStopMonitoringClicked() {
         g_chatClient->Stop();
         UpdateMonitoringState();
 
-        m_statusLabel->setText("Not monitoring");
-        m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #f0f0f0; }");
+        m_statusLabel->setText("⭕ モニタリング停止中");
+        m_statusLabel->setStyleSheet("background-color: #34495e; color: #95a5a6; border: 2px solid #7f8c8d;");
         m_startButton->setEnabled(true);
         m_stopButton->setEnabled(false);
     }
@@ -248,13 +531,13 @@ void SettingsDialog::UpdateMonitoringState() {
     if (g_chatClient && g_chatClient->IsRunning()) {
         m_startButton->setEnabled(false);
         m_stopButton->setEnabled(true);
-        m_statusLabel->setText("Monitoring active");
-        m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #90EE90; }");
+        m_statusLabel->setText("🟢 モニタリング中");
+        m_statusLabel->setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #27ae60, stop:1 #2ecc71); color: white; border: 2px solid #1abc9c;");
     } else {
         m_startButton->setEnabled(true);
         m_stopButton->setEnabled(false);
-        m_statusLabel->setText("Not monitoring");
-        m_statusLabel->setStyleSheet("QLabel { padding: 5px; background-color: #f0f0f0; }");
+        m_statusLabel->setText("⭕ モニタリング停止中");
+        m_statusLabel->setStyleSheet("background-color: #34495e; color: #95a5a6; border: 2px solid #7f8c8d;");
     }
 }
 
@@ -263,38 +546,64 @@ void SettingsDialog::OnTestObstructionClicked() {
     SaveSettings();
 
     if (!g_obstructionManager) {
-        QMessageBox::warning(this, "Error", "Obstruction manager not initialized.");
+        QMessageBox::warning(this, "エラー", "エフェクトマネージャーが初期化されていません。");
         return;
     }
 
     // Check if main source is set
     std::string mainSource = m_mainSourceEdit->text().toStdString();
     if (mainSource.empty()) {
-        QMessageBox::warning(this, "Missing Main Source",
-                           "Please set the Main Source name before testing.\n\n"
-                           "This should be the name of the source you want to shrink (e.g., 'Game Capture').");
+        QMessageBox::warning(this, "メインソース未設定",
+                           "テストする前にメインソース名を設定してください。\n\n"
+                           "これは縮小したいソースの名前です（例: 'ゲームキャプチャ'）。");
         return;
     }
 
     // Get test amount
     double testAmount = m_testAmountSpin->value();
 
-    // Create a simulated SuperChat event (this simulates the entire API flow)
-    DonationEvent simulatedEvent;
-    simulatedEvent.type = DonationType::SuperChat;
-    simulatedEvent.amount = testAmount;
-    simulatedEvent.displayName = "Test User";
-    simulatedEvent.message = "This is a test SuperChat!";
-    simulatedEvent.currency = "JPY";
+    // Load effect configurations and find matching config
+    EffectConfigList configs;
+    configs.FromVariantList(g_settings.effectConfigurations);
+    EffectSettings config = configs.FindConfigForAmount(testAmount);
 
-    // Call the same handler that would be called when real API data arrives
-    // This tests the complete flow: API -> Handler -> Effects
-    OnDonationReceived(simulatedEvent);
+    QString resultMessage;
 
-    QMessageBox::information(this, "Test Applied",
-                           QString("Simulated SuperChat: %1 JPY from '%2'\n\n"
-                                   "This tests the complete API flow!\n"
-                                   "Check your OBS preview and logs.").arg(testAmount).arg("Test User"));
+    if (config.amount > 0.0) {
+        // Found a configured effect
+        g_obstructionManager->ApplyConfiguredEffect(config);
+
+        resultMessage = QString(
+            "✓ 設定済みエフェクトを適用\n\n"
+            "テスト金額: %1 JPY\n"
+            "適用される設定: %2 JPY\n"
+            "エフェクト: %3\n"
+            "持続時間: %4秒\n\n"
+            "OBSプレビューを確認してください。"
+        ).arg(testAmount)
+         .arg(config.amount)
+         .arg(::EffectActionToString(config.action))
+         .arg(config.duration);
+
+        blog(LOG_INFO, "[Test] Using configured effect for %.2f JPY: Action=%d",
+             testAmount, static_cast<int>(config.action));
+    } else {
+        // No configuration found - use fallback
+        g_obstructionManager->ApplyObstruction(testAmount * g_settings.obstructionIntensity);
+
+        resultMessage = QString(
+            "⚠ デフォルト動作を適用\n\n"
+            "テスト金額: %1 JPY\n"
+            "この金額に対する設定が見つかりませんでした。\n\n"
+            "ランダムエフェクトが適用されます。\n"
+            "特定のエフェクトをテストするには、\n"
+            "「エフェクト設定」タブで金額を設定してください。"
+        ).arg(testAmount);
+
+        blog(LOG_INFO, "[Test] No config found for %.2f JPY, using default random behavior", testAmount);
+    }
+
+    QMessageBox::information(this, "テスト実行", resultMessage);
 }
 
 void SettingsDialog::OnTestRecoveryClicked() {
@@ -334,4 +643,10 @@ void SettingsDialog::OnTestRecoveryClicked() {
                            QString("Simulated SuperSticker: %1 JPY from '%2'\n\n"
                                    "This tests the complete API flow!\n"
                                    "Check your OBS preview and logs.").arg(testAmount).arg("Test User"));
+}
+
+void SettingsDialog::OnEffectConfigsChanged() {
+    // Mark that configurations have been modified
+    // They will be saved when user clicks Save button
+    blog(LOG_INFO, "[Settings] Effect configurations modified");
 }

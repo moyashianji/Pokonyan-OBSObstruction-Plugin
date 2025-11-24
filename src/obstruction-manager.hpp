@@ -6,8 +6,9 @@
 #include <random>
 #include <memory>
 
-// Forward declaration
+// Forward declarations
 class EffectManager;
+struct EffectSettings;
 
 struct ObstructionSource {
     obs_source_t* source;
@@ -25,6 +26,9 @@ public:
     void ApplyObstruction(double amount);
     void ShrinkMainSource(double percentage);
     void AddRandomObstruction(double intensity);
+
+    // NEW: Apply specific effect based on configuration
+    void ApplyConfiguredEffect(const EffectSettings& config);
 
     // Recovery effects (from Super Sticker)
     void ApplyRecovery(double amount);
@@ -56,6 +60,15 @@ private:
     double m_currentShrinkPercentage;
     bool m_enabled;
 
+    // Store original transform for reset
+    bool m_originalTransformSaved;
+    struct vec2 m_originalScale;
+    struct vec2 m_originalPos;
+    float m_originalRotation;
+
     std::mt19937 m_randomEngine;
     std::unique_ptr<EffectManager> m_effectManager;
+
+    // Helper functions
+    void SaveOriginalTransform(obs_sceneitem_t* sceneItem);
 };

@@ -4,6 +4,7 @@
 #include <obs-frontend-api.h>
 #include <memory>
 #include <string>
+#include <QVariantList>
 
 class YouTubeChatClient;
 class ObstructionManager;
@@ -27,6 +28,7 @@ struct PluginSettings {
     bool enableRecovery;
     double obstructionIntensity;
     double recoveryIntensity;
+    QVariantList effectConfigurations;  // Serialized effect configurations
 };
 
 extern PluginSettings g_settings;

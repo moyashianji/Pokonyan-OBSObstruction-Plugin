@@ -2,6 +2,7 @@
 #include "youtube-chat-client.hpp"
 #include "obstruction-manager.hpp"
 #include "settings-dialog.hpp"
+#include "effect-config.hpp"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -11,6 +12,13 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QVariant>
+#include <QProcess>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
@@ -41,6 +49,18 @@ void LoadSettings() {
     g_settings.obstructionIntensity = config_get_double(config, CONFIG_SECTION, "ObstructionIntensity");
     g_settings.recoveryIntensity = config_get_double(config, CONFIG_SECTION, "RecoveryIntensity");
 
+    // Load effect configurations from JSON
+    const char* effectConfigsJson = config_get_string(config, CONFIG_SECTION, "EffectConfigurations");
+    if (effectConfigsJson && effectConfigsJson[0] != '\0') {
+        QJsonDocument doc = QJsonDocument::fromJson(QByteArray(effectConfigsJson));
+        if (doc.isArray()) {
+            g_settings.effectConfigurations = doc.array().toVariantList();
+            blog(LOG_INFO, "[Settings] Loaded %d effect configurations", g_settings.effectConfigurations.size());
+        }
+    } else {
+        g_settings.effectConfigurations.clear();
+    }
+
     // Set defaults if not configured
     if (g_settings.obstructionIntensity == 0.0)
         g_settings.obstructionIntensity = 1.0;
@@ -59,6 +79,13 @@ void SaveSettings() {
     config_set_double(config, CONFIG_SECTION, "ObstructionIntensity", g_settings.obstructionIntensity);
     config_set_double(config, CONFIG_SECTION, "RecoveryIntensity", g_settings.recoveryIntensity);
 
+    // Save effect configurations as JSON
+    QJsonArray jsonArray = QJsonArray::fromVariantList(g_settings.effectConfigurations);
+    QJsonDocument doc(jsonArray);
+    QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
+    config_set_string(config, CONFIG_SECTION, "EffectConfigurations", jsonData.constData());
+    blog(LOG_INFO, "[Settings] Saved %d effect configurations", g_settings.effectConfigurations.size());
+
     config_save(config);
 }
 
@@ -75,7 +102,22 @@ void OnDonationReceived(const DonationEvent& event) {
     if (event.type == DonationType::SuperChat) {
         // Apply obstruction effects
         if (g_settings.enableObstructions) {
-            g_obstructionManager->ApplyObstruction(event.amount * g_settings.obstructionIntensity);
+            // Load effect configurations and find appropriate config for this amount
+            EffectConfigList configs;
+            configs.FromVariantList(g_settings.effectConfigurations);
+
+            EffectSettings config = configs.FindConfigForAmount(event.amount);
+
+            if (config.amount > 0.0) {
+                // Found a configured effect for this amount
+                blog(LOG_INFO, "[YouTube SuperChat] Using configured effect: Action=%d, Amount=%.2f, Duration=%.1f",
+                     static_cast<int>(config.action), config.amount, config.duration);
+                g_obstructionManager->ApplyConfiguredEffect(config);
+            } else {
+                // No configuration found, use default behavior
+                blog(LOG_INFO, "[YouTube SuperChat] No configured effect found, using default");
+                g_obstructionManager->ApplyObstruction(event.amount * g_settings.obstructionIntensity);
+            }
         }
     } else if (event.type == DonationType::SuperSticker) {
         // Apply recovery effects
@@ -122,6 +164,17 @@ void OnFrontendEvent(enum obs_frontend_event event, void* private_data) {
 
 bool obs_module_load(void) {
     blog(LOG_INFO, "YouTube SuperChat Plugin v%s loaded", PLUGIN_VERSION);
+
+    // Add Qt plugin paths for TLS backend
+    // OBS uses Qt from .deps directory, we need to ensure TLS plugins are found
+    QCoreApplication::addLibraryPath("C:/obs-studio/.deps/obs-deps-qt6-2025-08-23-x64/plugins");
+
+    // Also try to add from OBS bin directory (in case plugins are copied there)
+    QString obsPath = QCoreApplication::applicationDirPath();
+    QCoreApplication::addLibraryPath(obsPath + "/../plugins");
+    QCoreApplication::addLibraryPath(obsPath + "/plugins");
+
+    blog(LOG_INFO, "[YouTube SuperChat] Qt plugin paths configured for TLS support");
 
     // Initialize managers
     try {

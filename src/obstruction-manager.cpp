@@ -1,5 +1,6 @@
 #include "obstruction-manager.hpp"
 #include "effect-system.hpp"
+#include "effect-config.hpp"
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <graphics/vec2.h>
@@ -9,15 +10,25 @@
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
+#include <QDir>
+#include <QFileInfo>
+#include <QFileInfoList>
 
 namespace fs = std::filesystem;
 
 ObstructionManager::ObstructionManager()
     : m_currentShrinkPercentage(0.0)
     , m_enabled(true)
+    , m_originalTransformSaved(false)
     , m_randomEngine(std::random_device{}())
     , m_effectManager(std::make_unique<EffectManager>())
 {
+    m_originalScale.x = 1.0f;
+    m_originalScale.y = 1.0f;
+    m_originalPos.x = 0.0f;
+    m_originalPos.y = 0.0f;
+    m_originalRotation = 0.0f;
+
     blog(LOG_INFO, "[Obstruction] EffectManager initialized");
 }
 
@@ -99,6 +110,187 @@ void ObstructionManager::AddRandomObstruction(double intensity) {
     CreateObstructionSource(assetPath, intensity);
 }
 
+void ObstructionManager::ApplyConfiguredEffect(const EffectSettings& config) {
+    if (!m_enabled) return;
+
+    blog(LOG_INFO, "[Obstruction] Applying configured effect: Action=%d, Duration=%.1f, Amount=%.2f",
+         static_cast<int>(config.action), config.duration, config.amount);
+
+    obs_source_t* mainSource = nullptr;
+    if (!m_mainSourceName.empty()) {
+        mainSource = FindSourceByName(m_mainSourceName);
+    }
+
+    switch (config.action) {
+        case EffectAction::Random: {
+            // Apply random effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyRandomEffect(mainSource, 0.5, config.duration);
+            } else {
+                ApplyObstruction(config.amount);
+            }
+            break;
+        }
+
+        case EffectAction::Rotation: {
+            // Apply rotation effect with configured parameters
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyRotationEffect(mainSource, config.duration, config.rotationSpeed,
+                                                     config.rotationType, config.rotationReverse);
+                const char* rotTypeStr = (config.rotationType == 0) ? "Z軸" :
+                                        (config.rotationType == 1) ? "X軸" :
+                                        (config.rotationType == 2) ? "Y軸" : "全軸";
+                blog(LOG_INFO, "[Obstruction] Applied rotation: type=%s, speed=%.1f, duration=%.1f, reverse=%d",
+                     rotTypeStr, config.rotationSpeed, config.duration, config.rotationReverse);
+            }
+            break;
+        }
+
+        case EffectAction::Blink: {
+            // Apply blink effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::Blink, config.blinkFrequency, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied blink: frequency=%.1f Hz, duration=%.1f",
+                     config.blinkFrequency, config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::HueShift: {
+            // Apply hue shift effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::HueShift, config.hueSpeed / 180.0, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied hue shift: speed=%.1f deg/s, duration=%.1f",
+                     config.hueSpeed, config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::Shake: {
+            // Apply shake effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::Shake, config.shakeIntensity / 10.0, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied shake: intensity=%.1f, duration=%.1f",
+                     config.shakeIntensity, config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::ProgressBar: {
+            // Apply progress bar effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::ProgressBar, 1.0, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied progress bar: duration=%.1f", config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::Rotation3D: {
+            // Apply 3D rotation effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::Rotation3D, 0.5, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied 3D rotation: duration=%.1f", config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::Kaleidoscope: {
+            // Apply kaleidoscope effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::Kaleidoscope, 1.0, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied kaleidoscope: duration=%.1f", config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::ImageOverlay: {
+            // Apply image overlay
+            QString imagePath = config.mediaPath;
+
+            // If folder is specified, select random image from folder
+            if (!config.mediaFolder.isEmpty() && QDir(config.mediaFolder).exists()) {
+                QDir dir(config.mediaFolder);
+                QStringList filters;
+                filters << "*.png" << "*.jpg" << "*.jpeg" << "*.gif" << "*.bmp";
+                QFileInfoList files = dir.entryInfoList(filters, QDir::Files);
+
+                if (!files.isEmpty()) {
+                    int randomIndex = std::uniform_int_distribution<int>(0, files.size() - 1)(m_randomEngine);
+                    imagePath = files[randomIndex].absoluteFilePath();
+                }
+            }
+
+            if (!imagePath.isEmpty()) {
+                CreateObstructionSource(imagePath.toStdString(), config.imageScale / 100.0);
+                blog(LOG_INFO, "[Obstruction] Applied image overlay: %s, scale=%.0f%%",
+                     imagePath.toStdString().c_str(), config.imageScale);
+            }
+            break;
+        }
+
+        case EffectAction::VideoOverlay: {
+            // Apply video/GIF overlay
+            QString videoPath = config.mediaPath;
+
+            // If folder is specified, select random video from folder
+            if (!config.mediaFolder.isEmpty() && QDir(config.mediaFolder).exists()) {
+                QDir dir(config.mediaFolder);
+                QStringList filters;
+                filters << "*.mp4" << "*.webm" << "*.gif" << "*.mov";
+                QFileInfoList files = dir.entryInfoList(filters, QDir::Files);
+
+                if (!files.isEmpty()) {
+                    int randomIndex = std::uniform_int_distribution<int>(0, files.size() - 1)(m_randomEngine);
+                    videoPath = files[randomIndex].absoluteFilePath();
+                }
+            }
+
+            if (!videoPath.isEmpty()) {
+                CreateObstructionSource(videoPath.toStdString(), 1.0);
+                blog(LOG_INFO, "[Obstruction] Applied video overlay: %s", videoPath.toStdString().c_str());
+            }
+            break;
+        }
+
+        case EffectAction::ShrinkScreen: {
+            // Apply screen shrink
+            ShrinkMainSource(config.shrinkPercentage);
+            blog(LOG_INFO, "[Obstruction] Applied screen shrink: %.0f%%", config.shrinkPercentage);
+            break;
+        }
+
+        case EffectAction::Particle: {
+            // Apply particle effect with specific type
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyParticleEffect(mainSource, config.duration, config.particleCount, config.particleType);
+                const char* particleTypeStr = (config.particleType == 0) ? "爆発" :
+                                             (config.particleType == 1) ? "雨" :
+                                             (config.particleType == 2) ? "雪" : "星";
+                blog(LOG_INFO, "[Obstruction] Applied particle effect: type=%s, count=%d, duration=%.1f",
+                     particleTypeStr, config.particleCount, config.duration);
+            }
+            break;
+        }
+
+        case EffectAction::RandomShapes: {
+            // Apply random shapes effect
+            if (m_effectManager && mainSource) {
+                m_effectManager->ApplyEffect(mainSource, EffectType::RandomShapes, 1.0, config.duration);
+                blog(LOG_INFO, "[Obstruction] Applied random shapes: duration=%.1f", config.duration);
+            }
+            break;
+        }
+
+        default:
+            blog(LOG_WARNING, "[Obstruction] Unknown effect action: %d", static_cast<int>(config.action));
+            break;
+    }
+
+    if (mainSource) {
+        obs_source_release(mainSource);
+    }
+}
+
 void ObstructionManager::ApplyRecovery(double amount) {
     if (!m_enabled) return;
 
@@ -166,10 +358,41 @@ void ObstructionManager::RemoveRandomObstruction() {
 void ObstructionManager::ClearAllObstructions() {
     blog(LOG_INFO, "[Recovery] Clearing all obstructions");
 
+    // First, clear tracked obstructions
     for (auto& obstruction : m_obstructions) {
         RemoveObstructionSource(obstruction);
     }
     m_obstructions.clear();
+
+    // Also search for and remove any orphaned obstruction sources from all scenes
+    // This handles obstructions that may have been left over from previous OBS sessions
+    auto removeOrphanedObstructions = [](void* param, obs_source_t* source) -> bool {
+        const char* sourceName = obs_source_get_name(source);
+        std::string name(sourceName ? sourceName : "");
+
+        // Check if this is an obstruction source (starts with "Obstruction" or contains "obstruction")
+        if (name.find("Obstruction") != std::string::npos ||
+            name.find("obstruction") != std::string::npos) {
+
+            // Get current scene
+            obs_source_t* sceneSource = obs_frontend_get_current_scene();
+            if (sceneSource) {
+                obs_scene_t* scene = obs_scene_from_source(sceneSource);
+                if (scene) {
+                    // Find and remove the scene item
+                    obs_sceneitem_t* item = obs_scene_find_source(scene, sourceName);
+                    if (item) {
+                        obs_sceneitem_remove(item);
+                        blog(LOG_INFO, "[Recovery] Removed orphaned obstruction: %s", sourceName);
+                    }
+                }
+                obs_source_release(sceneSource);
+            }
+        }
+        return true;
+    };
+
+    obs_enum_sources(removeOrphanedObstructions, nullptr);
 
     // Clear all visual effects
     if (m_effectManager) {
@@ -177,19 +400,82 @@ void ObstructionManager::ClearAllObstructions() {
         blog(LOG_INFO, "[Recovery] Cleared all visual effects");
     }
 
-    // Reset main source scale
+    // Reset main source completely to original transform
     m_currentShrinkPercentage = 0.0;
     if (!m_mainSourceName.empty()) {
         obs_source_t* source = FindSourceByName(m_mainSourceName);
         if (source) {
-            UpdateSourceTransform(source, 1.0);
+            obs_sceneitem_t* sceneItem = FindSceneItemForSource(source);
+            if (sceneItem) {
+                // Restore to saved original transform if available
+                if (m_originalTransformSaved) {
+                    obs_sceneitem_set_scale(sceneItem, &m_originalScale);
+                    obs_sceneitem_set_pos(sceneItem, &m_originalPos);
+                    obs_sceneitem_set_rot(sceneItem, m_originalRotation);
+
+                    blog(LOG_INFO, "[Recovery] Restored to original transform: scale=(%.2f, %.2f), pos=(%.2f, %.2f), rot=%.2f",
+                         m_originalScale.x, m_originalScale.y, m_originalPos.x, m_originalPos.y, m_originalRotation);
+                } else {
+                    // Fallback to default reset
+                    struct vec2 scaleVec;
+                    scaleVec.x = 1.0f;
+                    scaleVec.y = 1.0f;
+                    obs_sceneitem_set_scale(sceneItem, &scaleVec);
+                    obs_sceneitem_set_rot(sceneItem, 0.0f);
+
+                    blog(LOG_INFO, "[Recovery] Reset to default transform (scale=100%%, rotation=0°)");
+                }
+
+                // Make sure source is visible
+                obs_sceneitem_set_visible(sceneItem, true);
+            }
+
+            // Remove all filters from the main source
+            auto removeAllFilters = [](obs_source_t* parent, obs_source_t* filter, void* param) {
+                const char* filterName = obs_source_get_name(filter);
+                obs_source_filter_remove(parent, filter);
+                blog(LOG_INFO, "[Recovery] Removed filter: %s", filterName);
+            };
+
+            obs_source_enum_filters(source, removeAllFilters, nullptr);
+
             obs_source_release(source);
+            blog(LOG_INFO, "[Recovery] Main source '%s' fully reset", m_mainSourceName.c_str());
         }
     }
+
+    blog(LOG_INFO, "[Recovery] All obstructions cleared and screen fully restored");
+}
+
+void ObstructionManager::SaveOriginalTransform(obs_sceneitem_t* sceneItem) {
+    if (!sceneItem || m_originalTransformSaved) return;
+
+    obs_sceneitem_get_scale(sceneItem, &m_originalScale);
+    obs_sceneitem_get_pos(sceneItem, &m_originalPos);
+    m_originalRotation = obs_sceneitem_get_rot(sceneItem);
+
+    m_originalTransformSaved = true;
+
+    blog(LOG_INFO, "[Obstruction] Saved original transform: scale=(%.2f, %.2f), pos=(%.2f, %.2f), rot=%.2f",
+         m_originalScale.x, m_originalScale.y, m_originalPos.x, m_originalPos.y, m_originalRotation);
 }
 
 void ObstructionManager::SetMainSourceName(const std::string& name) {
     m_mainSourceName = name;
+    m_originalTransformSaved = false;  // Reset when changing main source
+
+    // Save the original transform immediately
+    if (!name.empty()) {
+        obs_source_t* source = FindSourceByName(name);
+        if (source) {
+            obs_sceneitem_t* sceneItem = FindSceneItemForSource(source);
+            if (sceneItem) {
+                SaveOriginalTransform(sceneItem);
+            }
+            obs_source_release(source);
+        }
+    }
+
     blog(LOG_INFO, "[Obstruction] Main source set to: %s", name.c_str());
 }
 
@@ -230,6 +516,11 @@ void ObstructionManager::UpdateSourceTransform(obs_source_t* source, double scal
         return;
     }
 
+    // Save original transform on first use
+    if (!m_originalTransformSaved) {
+        SaveOriginalTransform(sceneItem);
+    }
+
     // Update scale using new API
     struct vec2 scaleVec;
     scaleVec.x = static_cast<float>(scale);
@@ -252,8 +543,8 @@ std::string ObstructionManager::SelectRandomObstructionAsset() {
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
                 // Check for image/video formats
-                if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-                    ext == ".gif" || ext == ".mp4" || ext == ".webm") {
+                if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
+                    ext == ".gif" || ext == ".mp4" || ext == ".webm" || ext == ".mov" || ext == ".avi") {
                     assets.push_back(entry.path().string());
                 }
             }
@@ -294,13 +585,19 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
         obs_data_t* settings = obs_data_create();
         obs_data_set_string(settings, "file", assetPath.c_str());
 
-        if (ext == ".mp4" || ext == ".webm") {
+        if (ext == ".mp4" || ext == ".webm" || ext == ".gif" || ext == ".mov" || ext == ".avi") {
+            // Use ffmpeg_source for videos and animated GIFs
             obs_data_set_bool(settings, "looping", true);
+            obs_data_set_bool(settings, "is_local_file", true);
             source = obs_source_create("ffmpeg_source", "Obstruction Video", settings, nullptr);
             type = "video";
+            blog(LOG_INFO, "[Obstruction] Creating video source: %s", assetPath.c_str());
         } else {
+            // Use image_source for static images
+            obs_data_set_string(settings, "unload", "false");
             source = obs_source_create("image_source", "Obstruction Image", settings, nullptr);
             type = "image";
+            blog(LOG_INFO, "[Obstruction] Creating image source: %s", assetPath.c_str());
         }
 
         obs_data_release(settings);
@@ -334,10 +631,18 @@ void ObstructionManager::CreateObstructionSource(const std::string& assetPath, d
         obs_sceneitem_set_pos(sceneItem, &pos);
 
         // Set scale based on intensity
+        // For image/video overlay: intensity is imageScale / 100.0 (e.g., 1.0 = 100%, 1.5 = 150%)
+        // For other effects: intensity is 0.0-1.0 range
         struct vec2 scale;
-        float scaleValue = 0.5f + static_cast<float>(intensity) * 0.5f;  // 0.5 to 1.0
+        float scaleValue = static_cast<float>(intensity);
+        if (scaleValue < 0.1f) {
+            // If intensity is very small, use it as 0-1 range and scale accordingly
+            scaleValue = 0.5f + scaleValue * 0.5f;  // 0.5 to 1.0
+        }
         vec2_set(&scale, scaleValue, scaleValue);
         obs_sceneitem_set_scale(sceneItem, &scale);
+
+        blog(LOG_INFO, "[Obstruction] Set scale to %.2f for %s", scaleValue, type.c_str());
 
         obs_source_release(sceneSource);
     }

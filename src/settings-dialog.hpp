@@ -6,6 +6,9 @@
 #include <QDoubleSpinBox>
 #include <QPushButton>
 #include <QLabel>
+#include <QTabWidget>
+
+class EffectConfigManager;
 
 class SettingsDialog : public QDialog {
     Q_OBJECT
@@ -25,12 +28,15 @@ private slots:
     void OnStopMonitoringClicked();
     void OnTestObstructionClicked();
     void OnTestRecoveryClicked();
+    void OnEffectConfigsChanged();
 
 private:
     void SetupUI();
     void UpdateMonitoringState();
 
     // UI elements
+    QTabWidget* m_tabWidget;
+
     QLineEdit* m_apiKeyEdit;
     QLineEdit* m_videoIdEdit;
     QLineEdit* m_mainSourceEdit;
@@ -53,4 +59,7 @@ private:
     QPushButton* m_testRecoveryButton;
 
     QLabel* m_statusLabel;
+
+    // Effect configuration manager
+    EffectConfigManager* m_effectConfigManager;
 };

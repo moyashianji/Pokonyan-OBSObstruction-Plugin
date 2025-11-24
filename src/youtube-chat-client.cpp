@@ -157,10 +157,16 @@ void YouTubeChatClient::OnNetworkError(QNetworkReply::NetworkError error) {
 }
 
 void YouTubeChatClient::ProcessChatMessages(const QJsonArray& items) {
+    blog(LOG_INFO, "[YouTube Chat] Processing %d messages", items.size());
+
     for (const QJsonValue& value : items) {
         QJsonObject message = value.toObject();
         QJsonObject snippet = message["snippet"].toObject();
         QJsonObject authorDetails = message["authorDetails"].toObject();
+
+        // Log message type for debugging
+        QString messageType = message["snippet"].toObject()["type"].toString();
+        blog(LOG_DEBUG, "[YouTube Chat] Message type: %s", messageType.toStdString().c_str());
 
         // Check if it's a super chat or super sticker
         if (snippet.contains("superChatDetails")) {
@@ -169,7 +175,10 @@ void YouTubeChatClient::ProcessChatMessages(const QJsonArray& items) {
             DonationEvent event;
             event.type = DonationType::SuperChat;
             event.displayName = authorDetails["displayName"].toString().toStdString();
-            event.message = snippet["displayMessage"].toString().toStdString();
+            // SuperChat message can be in displayMessage or superChatDetails.userComment
+            event.message = snippet.contains("displayMessage")
+                ? snippet["displayMessage"].toString().toStdString()
+                : superChat["userComment"].toString().toStdString();
 
             // Parse amount
             if (superChat.contains("amountMicros")) {
@@ -181,6 +190,9 @@ void YouTubeChatClient::ProcessChatMessages(const QJsonArray& items) {
 
             // Convert to JPY for consistent processing
             event.amount = ConvertCurrency(event.amount, event.currency);
+
+            blog(LOG_INFO, "[YouTube Chat] SuperChat from %s: ¥%.0f - %s",
+                event.displayName.c_str(), event.amount, event.message.c_str());
 
             if (m_donationCallback) {
                 m_donationCallback(event);
@@ -204,6 +216,27 @@ void YouTubeChatClient::ProcessChatMessages(const QJsonArray& items) {
 
             // Convert to JPY
             event.amount = ConvertCurrency(event.amount, event.currency);
+
+            blog(LOG_INFO, "[YouTube Chat] SuperSticker from %s: ¥%.0f",
+                event.displayName.c_str(), event.amount);
+
+            if (m_donationCallback) {
+                m_donationCallback(event);
+            }
+        }
+        else if (snippet.contains("textMessageDetails")) {
+            // Regular chat message - treat as low value super chat for obstruction effects
+            QJsonObject textMessageDetails = snippet["textMessageDetails"].toObject();
+
+            DonationEvent event;
+            event.type = DonationType::SuperChat;
+            event.displayName = authorDetails["displayName"].toString().toStdString();
+            event.message = textMessageDetails["messageText"].toString().toStdString();
+            event.amount = 100.0;  // Treat as 100 JPY for obstruction effect
+            event.currency = "JPY";
+
+            blog(LOG_INFO, "[YouTube Chat] Regular chat from %s: %s",
+                event.displayName.c_str(), event.message.c_str());
 
             if (m_donationCallback) {
                 m_donationCallback(event);

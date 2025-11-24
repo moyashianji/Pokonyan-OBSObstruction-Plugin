@@ -57,7 +57,8 @@ class RotationEffect : public EffectBase {
     Q_OBJECT
 
 public:
-    RotationEffect(obs_source_t* source, double duration, double rotationsPerSecond = 0.5);
+    RotationEffect(obs_source_t* source, double duration, double rotationsPerSecond = 0.5,
+                   int rotationType = 0, bool reverse = false);
 
     void Start() override;
     void Stop() override;
@@ -66,6 +67,10 @@ public:
 private:
     double m_rotationsPerSecond;
     double m_currentRotation;
+    int m_rotationType;  // 0=Z軸, 1=X軸, 2=Y軸, 3=全軸
+    bool m_reverse;
+    vec2 m_originalPos;
+    vec2 m_originalScale;
 };
 
 // Blink Effect
@@ -132,6 +137,9 @@ public:
 private:
     int m_segments;
     std::vector<obs_source_t*> m_mirrorSources;
+    vec2 m_originalPos;
+    vec2 m_originalScale;
+    float m_originalRot;
 };
 
 // 3D Rotation Effect
@@ -150,6 +158,9 @@ private:
     bool m_rotateY;
     double m_angleX;
     double m_angleY;
+    vec2 m_originalPos;
+    vec2 m_originalScale;
+    float m_originalRot;
 };
 
 // Random Shapes Effect
@@ -186,7 +197,7 @@ class ParticleSystemEffect : public EffectBase {
     Q_OBJECT
 
 public:
-    ParticleSystemEffect(obs_source_t* source, double duration, int particleCount = 50);
+    ParticleSystemEffect(obs_source_t* source, double duration, int particleCount = 50, int particleType = 0);
 
     void Start() override;
     void Stop() override;
@@ -196,19 +207,43 @@ private:
     struct Particle {
         vec2 position;
         vec2 velocity;
+        vec2 acceleration;
         float life;
+        float maxLife;
         float size;
+        float rotation;
+        float rotationSpeed;
         uint32_t color;
+        float alpha;
+        int phase; // For multi-phase effects like explosions
+        bool isActive;
     };
 
     int m_particleCount;
+    int m_particleType; // 0=explosion, 1=rain, 2=snow, 3=stars
     std::vector<Particle> m_particles;
+    std::vector<obs_source_t*> m_particleSources;
     std::mt19937 m_randomEngine;
-    obs_source_t* m_particleSource;
+    double m_spawnTimer;
+    int m_nextParticleIndex;
 
-    void CreateParticleSource();
-    void UpdateParticleSource();
-    void RespawnParticle(Particle& particle);
+    // Particle type specific initializers
+    void InitExplosionParticle(Particle& particle, const vec2& center);
+    void InitRainParticle(Particle& particle);
+    void InitSnowParticle(Particle& particle);
+    void InitStarParticle(Particle& particle);
+
+    // Update functions for each type
+    void UpdateExplosionParticle(Particle& particle, float deltaTime);
+    void UpdateRainParticle(Particle& particle, float deltaTime);
+    void UpdateSnowParticle(Particle& particle, float deltaTime);
+    void UpdateStarParticle(Particle& particle, float deltaTime);
+
+    // Utility functions
+    uint32_t InterpolateColor(uint32_t color1, uint32_t color2, float t);
+    void CreateParticleSource(int index, const Particle& particle);
+    void UpdateParticleSource(int index, const Particle& particle);
+    void RemoveAllParticleSources();
 };
 
 // Progress Bar Effect
@@ -246,6 +281,13 @@ public:
 
     // Apply specific effect
     void ApplyEffect(obs_source_t* source, EffectType type, double intensity, double duration);
+
+    // Apply rotation effect with specific parameters
+    void ApplyRotationEffect(obs_source_t* source, double duration, double speed,
+                             int rotationType, bool reverse);
+
+    // Apply particle effect with specific parameters
+    void ApplyParticleEffect(obs_source_t* source, double duration, int particleCount, int particleType);
 
     // Clear all effects
     void ClearAllEffects();
