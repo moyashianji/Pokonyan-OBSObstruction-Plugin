@@ -3,6 +3,7 @@
 #include "obstruction-manager.hpp"
 #include "settings-dialog.hpp"
 #include "effect-config.hpp"
+#include "room-3d-source.hpp"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -164,6 +165,9 @@ void OnFrontendEvent(enum obs_frontend_event event, void* private_data) {
 
 bool obs_module_load(void) {
     blog(LOG_INFO, "YouTube SuperChat Plugin v%s loaded", PLUGIN_VERSION);
+
+    // Register 3D Room Source
+    register_room_3d_source();
 
     // Add Qt plugin paths for TLS backend
     // OBS uses Qt from .deps directory, we need to ensure TLS plugins are found

@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
+
+# Visual Studio 2022 Build Tools configuration
+# Standard library headers are provided by the MSVC toolchain
+
 project(obs-youtube-superchat-plugin VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -54,11 +58,14 @@ else()
     find_package(obs-frontend-api QUIET)
 endif()
 
-# If not found, try to use installed OBS
+# If not found, try to use installed OBS with source headers
 if(NOT libobs_FOUND OR NOT obs-frontend-api_FOUND)
     message(STATUS "OBS packages not found via find_package, trying manual detection...")
 
-    # Common OBS installation paths
+    # OBS source directory for headers
+    set(OBS_SOURCE_DIR "C:/obs-studio-src")
+
+    # Common OBS installation paths for binaries
     set(OBS_INSTALL_PATHS
         "C:/Program Files/obs-studio"
         "C:/Program Files (x86)/obs-studio"
@@ -78,22 +85,36 @@ if(NOT libobs_FOUND OR NOT obs-frontend-api_FOUND)
         message(FATAL_ERROR "Could not find OBS Studio installation")
     endif()
 
-    # Create imported targets manually
+    # Check if OBS source exists for headers
+    if(NOT EXISTS "${OBS_SOURCE_DIR}/libobs")
+        message(FATAL_ERROR "OBS source not found at ${OBS_SOURCE_DIR}. Please clone OBS source.")
+    endif()
+
+    # Generated .lib files location (created from DLLs using generate-libs.ps1)
+    set(OBS_LIB_DIR "C:/obs-libs")
+
+    # Create imported targets using installed binaries + source headers + generated libs
     add_library(OBS::libobs SHARED IMPORTED)
     set_target_properties(OBS::libobs PROPERTIES
         IMPORTED_LOCATION "${OBS_INSTALL_DIR}/bin/64bit/obs.dll"
-        IMPORTED_IMPLIB "${OBS_INSTALL_DIR}/bin/64bit/obs.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "${OBS_INSTALL_DIR}/include"
+        IMPORTED_IMPLIB "${OBS_LIB_DIR}/obs.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_SOURCE_DIR}/libobs"
     )
 
     add_library(OBS::obs-frontend-api SHARED IMPORTED)
     set_target_properties(OBS::obs-frontend-api PROPERTIES
         IMPORTED_LOCATION "${OBS_INSTALL_DIR}/bin/64bit/obs-frontend-api.dll"
-        IMPORTED_IMPLIB "${OBS_INSTALL_DIR}/bin/64bit/obs-frontend-api.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "${OBS_INSTALL_DIR}/include"
+        IMPORTED_IMPLIB "${OBS_LIB_DIR}/obs-frontend-api.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_SOURCE_DIR}/UI/obs-frontend-api"
     )
 
-    message(STATUS "Using OBS from installation directory")
+    # Add additional include directories needed for OBS headers
+    include_directories(
+        "${OBS_SOURCE_DIR}/libobs"
+        "${OBS_SOURCE_DIR}/UI/obs-frontend-api"
+    )
+
+    message(STATUS "Using OBS binaries from ${OBS_INSTALL_DIR}, headers from ${OBS_SOURCE_DIR}")
 endif()
 
 # Find Qt (try Qt6 first, fallback to Qt5)
@@ -108,8 +129,8 @@ else()
     set(QT_VERSION 5)
 endif()
 
-# Find cURL for HTTP requests
-find_package(CURL REQUIRED)
+# Note: cURL is not actually used - we use Qt Network instead
+# find_package(CURL REQUIRED)
 
 # Find nlohmann_json for JSON parsing
 find_package(nlohmann_json 3.2.0 QUIET)
@@ -117,8 +138,11 @@ if(NOT nlohmann_json_FOUND)
     message(STATUS "nlohmann_json not found, using FetchContent")
     include(FetchContent)
     FetchContent_Declare(json
-        URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
+    # Set policy for older CMake compatibility in nlohmann_json
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
     FetchContent_MakeAvailable(json)
 endif()
 
@@ -132,6 +156,7 @@ set(PLUGIN_SOURCES
     src/effect-config.cpp
     src/effect-config-dialog.cpp
     src/effect-config-manager.cpp
+    src/room-3d-source.cpp
 )
 
 set(PLUGIN_HEADERS
@@ -143,6 +168,7 @@ set(PLUGIN_HEADERS
     src/effect-config.hpp
     src/effect-config-dialog.hpp
     src/effect-config-manager.hpp
+    src/room-3d-source.hpp
 )
 
 # Create plugin library
@@ -164,7 +190,6 @@ if(QT_VERSION EQUAL 6)
         Qt6::Core
         Qt6::Widgets
         Qt6::Network
-        CURL::libcurl
         nlohmann_json::nlohmann_json
     )
 else()
@@ -174,7 +199,6 @@ else()
         Qt5::Core
         Qt5::Widgets
         Qt5::Network
-        CURL::libcurl
         nlohmann_json::nlohmann_json
     )
 endif()
@@ -200,3 +224,13 @@ install(TARGETS obs-youtube-superchat-plugin
 install(DIRECTORY data/
     DESTINATION ${DATA_INSTALL_DIR}
 )
+
+# Copy effect files to build directory for development
+file(GLOB EFFECT_FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/effects/*.effect")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/data/obs-plugins/obs-youtube-superchat-plugin/effects")
+foreach(effect_file ${EFFECT_FILES})
+    get_filename_component(effect_name ${effect_file} NAME)
+    configure_file(${effect_file}
+        "${CMAKE_BINARY_DIR}/data/obs-plugins/obs-youtube-superchat-plugin/effects/${effect_name}"
+        COPYONLY)
+endforeach()
