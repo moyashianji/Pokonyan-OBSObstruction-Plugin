@@ -1,0 +1,26 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "obs-youtube-superchat-plugin.dll",
+      "name": "OBS Studio (Debug)",
+      "program": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe",
+      "args": [],
+      "cwd": "${workspaceRoot}",
+      "env": {}
+    },
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "obs-youtube-superchat-plugin.dll",
+      "name": "OBS Studio (Release)",
+      "program": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe",
+      "args": [],
+      "cwd": "${workspaceRoot}",
+      "env": {}
+    }
+  ]
+}

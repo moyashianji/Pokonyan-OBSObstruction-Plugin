@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command:*)",
+      "Bash(winget install:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: OBS YouTube SuperChat Plugin\n\nYouTubeスーパーチャット連動OBS妨害プラグイン\n- 13種類のビジュアルエフェクト（回転、点滅、色相変化、揺れ、万華鏡、3D回転、パーティクル等）\n- YouTube Data API v3によるリアルタイムスーパーチャット取得\n- 金額に応じたエフェクト強度・持続時間の自動調整\n- Qt6ベースの設定UI\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git config:*)"
+    ]
+  }
+}
