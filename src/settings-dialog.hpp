@@ -58,6 +58,10 @@ private:
     QPushButton* m_testObstructionButton;
     QPushButton* m_testRecoveryButton;
 
+    // Regular comment trigger settings
+    QCheckBox* m_triggerOnCommentCheck;
+    QDoubleSpinBox* m_commentAmountSpin;
+
     QLabel* m_statusLabel;
 
     // Effect configuration manager

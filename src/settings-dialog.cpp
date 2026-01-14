@@ -364,6 +364,32 @@ void SettingsDialog::SetupUI() {
     testGroup->setLayout(testLayout);
     basicLayout->addWidget(testGroup);
 
+    // Regular Comment Test Mode
+    QGroupBox* commentTestGroup = new QGroupBox("通常コメントでテスト (収益化不要)");
+    QFormLayout* commentTestLayout = new QFormLayout();
+
+    m_triggerOnCommentCheck = new QCheckBox("通常コメントでエフェクト発動");
+    m_triggerOnCommentCheck->setToolTip("チェックするとスパチャ以外の通常コメントでもエフェクトが発動します（テスト用）");
+    commentTestLayout->addRow(m_triggerOnCommentCheck);
+
+    m_commentAmountSpin = new QDoubleSpinBox();
+    m_commentAmountSpin->setRange(100, 50000);
+    m_commentAmountSpin->setValue(100);
+    m_commentAmountSpin->setSuffix(" JPY");
+    m_commentAmountSpin->setToolTip("通常コメントを何円のスパチャとして扱うか");
+    commentTestLayout->addRow("コメント扱い金額:", m_commentAmountSpin);
+
+    QLabel* commentHelpLabel = new QLabel(
+        "この機能を有効にすると、YouTubeライブの通常コメントが\n"
+        "指定金額のスーパーチャットとして扱われ、エフェクトが発動します。\n"
+        "収益化されていないチャンネルでもテストが可能です。"
+    );
+    commentHelpLabel->setStyleSheet("color: #7f8c8d; font-size: 9pt;");
+    commentTestLayout->addRow(commentHelpLabel);
+
+    commentTestGroup->setLayout(commentTestLayout);
+    basicLayout->addWidget(commentTestGroup);
+
     // Control Buttons
     QHBoxLayout* controlLayout = new QHBoxLayout();
 
@@ -429,6 +455,10 @@ void SettingsDialog::LoadSettings() {
     m_obstructionIntensitySpin->setValue(g_settings.obstructionIntensity);
     m_recoveryIntensitySpin->setValue(g_settings.recoveryIntensity);
 
+    // Load regular comment test settings
+    m_triggerOnCommentCheck->setChecked(g_settings.triggerOnRegularComment);
+    m_commentAmountSpin->setValue(g_settings.regularCommentAmount);
+
     // Load effect configurations
     if (m_effectConfigManager) {
         EffectConfigList configs;
@@ -446,6 +476,10 @@ void SettingsDialog::SaveSettings() {
     g_settings.enableRecovery = m_enableRecoveryCheck->isChecked();
     g_settings.obstructionIntensity = m_obstructionIntensitySpin->value();
     g_settings.recoveryIntensity = m_recoveryIntensitySpin->value();
+
+    // Save regular comment test settings
+    g_settings.triggerOnRegularComment = m_triggerOnCommentCheck->isChecked();
+    g_settings.regularCommentAmount = m_commentAmountSpin->value();
 
     // Save effect configurations
     if (m_effectConfigManager) {

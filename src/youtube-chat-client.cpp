@@ -1,4 +1,5 @@
 #include "youtube-chat-client.hpp"
+#include "plugin-main.hpp"
 #include <obs-module.h>
 #include <util/base.h>
 #include <QJsonDocument>
@@ -225,21 +226,29 @@ void YouTubeChatClient::ProcessChatMessages(const QJsonArray& items) {
             }
         }
         else if (snippet.contains("textMessageDetails")) {
-            // Regular chat message - treat as low value super chat for obstruction effects
-            QJsonObject textMessageDetails = snippet["textMessageDetails"].toObject();
+            // Regular chat message - only trigger if setting is enabled
+            if (g_settings.triggerOnRegularComment) {
+                QJsonObject textMessageDetails = snippet["textMessageDetails"].toObject();
 
-            DonationEvent event;
-            event.type = DonationType::SuperChat;
-            event.displayName = authorDetails["displayName"].toString().toStdString();
-            event.message = textMessageDetails["messageText"].toString().toStdString();
-            event.amount = 100.0;  // Treat as 100 JPY for obstruction effect
-            event.currency = "JPY";
+                DonationEvent event;
+                event.type = DonationType::SuperChat;
+                event.displayName = authorDetails["displayName"].toString().toStdString();
+                event.message = textMessageDetails["messageText"].toString().toStdString();
+                event.amount = g_settings.regularCommentAmount;  // 設定された金額を使用
+                event.currency = "JPY";
 
-            blog(LOG_INFO, "[YouTube Chat] Regular chat from %s: %s",
-                event.displayName.c_str(), event.message.c_str());
+                blog(LOG_INFO, "[YouTube Chat] Regular chat (treated as %.0f JPY) from %s: %s",
+                    event.amount, event.displayName.c_str(), event.message.c_str());
 
-            if (m_donationCallback) {
-                m_donationCallback(event);
+                if (m_donationCallback) {
+                    m_donationCallback(event);
+                }
+            } else {
+                // Just log, don't trigger effect
+                QJsonObject textMessageDetails = snippet["textMessageDetails"].toObject();
+                blog(LOG_DEBUG, "[YouTube Chat] Regular chat (ignored) from %s: %s",
+                    authorDetails["displayName"].toString().toStdString().c_str(),
+                    textMessageDetails["messageText"].toString().toStdString().c_str());
             }
         }
     }

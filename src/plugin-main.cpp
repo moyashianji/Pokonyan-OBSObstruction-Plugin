@@ -62,11 +62,17 @@ void LoadSettings() {
         g_settings.effectConfigurations.clear();
     }
 
+    // Load test/debug settings
+    g_settings.triggerOnRegularComment = config_get_bool(config, CONFIG_SECTION, "TriggerOnRegularComment");
+    g_settings.regularCommentAmount = config_get_double(config, CONFIG_SECTION, "RegularCommentAmount");
+
     // Set defaults if not configured
     if (g_settings.obstructionIntensity == 0.0)
         g_settings.obstructionIntensity = 1.0;
     if (g_settings.recoveryIntensity == 0.0)
         g_settings.recoveryIntensity = 1.0;
+    if (g_settings.regularCommentAmount == 0.0)
+        g_settings.regularCommentAmount = 100.0;  // デフォルト100円
 }
 
 void SaveSettings() {
@@ -86,6 +92,10 @@ void SaveSettings() {
     QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
     config_set_string(config, CONFIG_SECTION, "EffectConfigurations", jsonData.constData());
     blog(LOG_INFO, "[Settings] Saved %d effect configurations", g_settings.effectConfigurations.size());
+
+    // Save test/debug settings
+    config_set_bool(config, CONFIG_SECTION, "TriggerOnRegularComment", g_settings.triggerOnRegularComment);
+    config_set_double(config, CONFIG_SECTION, "RegularCommentAmount", g_settings.regularCommentAmount);
 
     config_save(config);
 }

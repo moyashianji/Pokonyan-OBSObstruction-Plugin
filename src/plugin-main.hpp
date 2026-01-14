@@ -29,6 +29,10 @@ struct PluginSettings {
     double obstructionIntensity;
     double recoveryIntensity;
     QVariantList effectConfigurations;  // Serialized effect configurations
+
+    // Test/Debug settings
+    bool triggerOnRegularComment;       // 通常コメントでもエフェクト発動
+    double regularCommentAmount;         // 通常コメントの扱い金額（デフォルト100円）
 };
 
 extern PluginSettings g_settings;
