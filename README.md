@@ -128,25 +128,203 @@ sudo make install
 
 ## トラブルシューティング
 
-### プラグインが読み込まれない
+このセクションでは、開発・テスト中に発生したエラーとその解決策を詳しく記載しています。
+
+---
+
+### 1. TLSバックエンドエラー（HTTPS接続失敗）
+
+#### エラー内容
+```
+qt.network.ssl: No TLS backend is available
+[YouTube Chat] Network error fetching live chat ID: Error transferring https://www.googleapis.com/...
+```
+
+#### 原因
+Qt6でHTTPS通信を行うには、TLSバックエンド（Windows用のSChannelプラグイン）が必要です。OBSに同梱されているQt6にはTLSプラグインが含まれていない場合があります。
+
+#### 解決策
+
+**方法1: TLSプラグインを手動でコピー**
+
+1. vcpkgからTLSバックエンドDLLを取得:
+   ```
+   C:\vcpkg\installed\x64-windows\Qt6\plugins\tls\qschannelbackend.dll
+   ```
+
+2. OBSのプラグインディレクトリにコピー:
+   ```
+   C:\Program Files\obs-studio\bin\64bit\tls\qschannelbackend.dll
+   ```
+   ※ `tls` フォルダが存在しない場合は作成してください
+
+3. OBSを再起動
+
+**方法2: インストールスクリプトを使用**
+
+管理者権限でPowerShellを開き、以下を実行:
+```powershell
+.\install-tls-backend.ps1
+```
+
+---
+
+### 2. API Quota Exceeded（403エラー）
+
+#### エラー内容
+```json
+{
+  "error": {
+    "code": 403,
+    "message": "The request cannot be completed because you have exceeded your quota.",
+    "errors": [{
+      "domain": "youtube.quota",
+      "reason": "quotaExceeded"
+    }]
+  }
+}
+```
+
+#### 原因
+1. **共有APIキーの使用**: デフォルトのAPIキーを使用している場合、他のユーザーと共有されクォータが消費されている可能性があります
+2. **APIの使用制限超過**: YouTube Data API v3には1日あたり10,000クォータの制限があります
+
+#### 解決策
+
+**自分専用のAPIキーを作成:**
+1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
+2. 新しいプロジェクトを作成
+3. **APIs & Services** → **Library** → **YouTube Data API v3** を有効化
+4. **APIs & Services** → **Credentials** → **Create Credentials** → **API Key**
+5. プラグイン設定で作成したAPIキーを入力
+
+#### クォータ使用量
+| API操作 | クォータコスト |
+|---------|---------------|
+| videos.list | 1 |
+| liveChat/messages | 1 |
+
+---
+
+### 3. API Key Invalid（400エラー）
+
+#### エラー内容
+```json
+{
+  "error": {
+    "code": 400,
+    "message": "API key not valid. Please pass a valid API key.",
+    "status": "INVALID_ARGUMENT",
+    "details": [{"reason": "API_KEY_INVALID"}]
+  }
+}
+```
+
+#### 原因
+1. **APIキーの形式が不正**: 正しいAPIキーは `AIzaSy...` で始まる39文字程度の文字列
+2. **誤った値の入力**: コマンドやURLなど、APIキー以外の文字列が入力されている
+3. **YouTube Data API v3が未有効**: APIキーは有効でも、該当APIが有効化されていない
+
+#### 解決策
+1. OBSログで `[YouTube Chat] API Key:` を確認し、正しい形式か確認
+2. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) でAPIキーの状態を確認
+3. 問題がある場合は新しいAPIキーを作成
+
+---
+
+### 4. Queries per day = 0（クォータが割り当てられない）
+
+#### 症状
+- Google Cloud ConsoleでYouTube Data API v3を有効にした
+- しかし「Quotas」ページで「Queries per day」が0のまま
+
+#### 解決策
+
+1. **請求情報を追加**:
+   - [Cloud Billing](https://console.cloud.google.com/billing) で請求アカウントを設定
+   - プロジェクトに請求アカウントをリンク
+   - ※無料トライアルクレジット（約$300相当）が付与されます
+
+2. **APIを再有効化**:
+   - YouTube Data API v3を一度無効にして再度有効化
+
+3. **待機**:
+   - 請求情報の反映には数分〜1時間かかることがあります
+
+---
+
+### 5. 「activeLiveChatId」が取得できない
+
+#### エラー内容
+```
+[YouTube Chat] No activeLiveChatId - stream may not be live yet or already ended
+```
+
+#### 原因
+1. 配信がまだ開始されていない（予約配信の場合）
+2. 配信がすでに終了している
+3. 動画IDが通常の動画（ライブ配信ではない）
+
+#### 解決策
+1. 配信が**ライブ中**であることを確認
+2. 正しいライブ配信のVideo IDを使用
+3. 配信URLが `https://youtube.com/watch?v=XXXXX` の場合、`XXXXX` がVideo ID
+
+---
+
+### 6. プラグインが読み込まれない
 
 - OBS Studioのバージョンを確認（28.0以上が必要）
-- プラグインが正しいディレクトリにインストールされているか確認
+- プラグインが正しいディレクトリにインストールされているか確認:
+  ```
+  C:\Program Files\obs-studio\obs-plugins\64bit\obs-youtube-superchat-plugin.dll
+  ```
 - OBSのログを確認（Help > Log Files > Current Log）
+- `YouTube SuperChat Plugin v1.0.0 loaded` が表示されていれば成功
 
-### YouTube Chat APIが動作しない
+---
 
-- APIキーが正しいか確認
-- Video IDが正しいか確認（配信中の動画のみ対応）
-- Google Cloud ConsoleでYouTube Data API v3が有効か確認
-- APIの使用量制限に達していないか確認
-
-### 効果が発生しない
+### 7. 効果が発生しない
 
 - **Start Monitoring**がクリックされているか確認
-- Main Sourceの名前が正しいか確認
+- Main Sourceの名前が正しいか確認（大文字小文字も一致する必要あり）
 - Enable ObstructionsまたはEnable Recoveryがチェックされているか確認
+- 配信がライブ中であるか確認
 - OBSログでエラーメッセージを確認
+
+---
+
+### ログの確認方法
+
+問題が発生した場合は、OBSログを確認してください：
+
+1. OBSメニューから **ヘルプ** → **ログファイル** → **現在のログを表示**
+2. 以下のキーワードで検索:
+   - `[YouTube SuperChat]` - プラグイン全般
+   - `[YouTube Chat]` - API通信関連
+   - `[Settings]` - 設定関連
+   - `[Effect]` - エフェクト関連
+
+#### 正常動作時のログ例
+```
+YouTube SuperChat Plugin v1.0.0 loaded
+[YouTube SuperChat] ObstructionManager initialized
+[YouTube SuperChat] YouTubeChatClient initialized
+[YouTube Chat] SUCCESS! Live chat ID obtained: Cg0KC...
+[YouTube Chat] Received 3 new message(s)
+[YouTube SuperChat] Donation received: @username - 100.00 JPY
+```
+
+---
+
+### よくある設定ミス
+
+| ミス | 正しい設定 |
+|------|-----------|
+| APIキー欄にURLを入力 | `AIzaSy...` 形式の文字列 |
+| Video ID欄に配信URLを入力 | URLの `v=` 以降の部分のみ |
+| Main Sourceが空 | OBSのソース名を正確に入力 |
+| 「通常コメントでエフェクト発動」がOFF | 収益化していない場合はONにする |
 
 ## 設定ファイル
 
