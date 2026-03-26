@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { getOutputFormats } from '$lib/converter';
 	import { VIDEO_FORMATS, AUDIO_FORMATS, IMAGE_FORMATS, type FormatInfo } from '$lib/formats';
+	import { t, type Locale } from '$lib/i18n';
 
 	interface FormatOption {
 		value: string;
@@ -14,13 +15,15 @@
 		selectedFormats?: string[];
 		multiSelect?: boolean;
 		fileType?: 'video' | 'audio' | 'image' | 'document' | null;
+		locale?: Locale;
 	}
 
 	let {
 		selectedFormat = '',
 		selectedFormats = [],
 		multiSelect = false,
-		fileType = null
+		fileType = null,
+		locale = 'en'
 	}: Props = $props();
 
 	const dispatch = createEventDispatcher<{ select: string; toggle: string }>();
@@ -32,11 +35,11 @@
 		txt: { label: 'TXT', description: 'Text', category: 'image', mimeType: 'text/plain' }
 	};
 
-	const categories: Record<string, string> = {
-		video: 'Video',
-		audio: 'Audio',
-		image: 'Image'
-	};
+	let categories = $derived({
+		video: t(locale, 'video'),
+		audio: t(locale, 'audio'),
+		image: t(locale, 'image')
+	});
 
 	let availableFormats = $derived.by(() => {
 		if (!fileType) return [];
@@ -70,9 +73,9 @@
 
 <div class="selector">
 	<div class="selector-header">
-		<span class="selector-title">Output formats</span>
+		<span class="selector-title">{t(locale, 'outputFormats')}</span>
 		{#if multiSelect && selectedFormats.length > 0}
-			<span class="selected-count">{selectedFormats.length} selected</span>
+			<span class="selected-count">{selectedFormats.length} {t(locale, 'selected')}</span>
 		{/if}
 	</div>
 

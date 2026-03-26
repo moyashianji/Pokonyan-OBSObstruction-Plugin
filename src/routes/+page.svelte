@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import Icon from '$lib/components/Icon.svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import FormatSelector from '$lib/components/FormatSelector.svelte';
@@ -14,6 +15,13 @@
 		type ConversionState,
 		type FileType
 	} from '$lib/converter';
+	import {
+		detectLocale,
+		t,
+		SUPPORTED_LOCALES,
+		LOCALE_NAMES,
+		type Locale
+	} from '$lib/i18n';
 
 	interface FileItem {
 		file: File;
@@ -27,6 +35,8 @@
 	let capabilities = $state({ webcodecs: false, ffmpeg: false, sharedArrayBuffer: false });
 	let mounted = $state(false);
 	let isConverting = $state(false);
+	let locale = $state<Locale>('en');
+	let showLangMenu = $state(false);
 
 	// Logging
 	let logs = $state<LogEntry[]>([]);
@@ -42,25 +52,48 @@
 		logs = [];
 	}
 
+	function setLocale(newLocale: Locale) {
+		locale = newLocale;
+		showLangMenu = false;
+		if (browser) {
+			localStorage.setItem('locale', newLocale);
+			// Update URL without reload
+			const url = new URL(window.location.href);
+			url.searchParams.set('lang', newLocale);
+			window.history.replaceState({}, '', url.toString());
+		}
+	}
+
 	onMount(() => {
 		mounted = true;
 		capabilities = getSystemCapabilities();
-		addLog('info', 'System ready', {
-			WebCodecs: capabilities.webcodecs ? 'available' : 'unavailable',
-			FFmpeg: capabilities.sharedArrayBuffer ? 'available' : 'unavailable'
-		});
+
+		// Detect locale from URL, localStorage, or browser
+		const urlParams = new URLSearchParams(window.location.search);
+		const urlLang = urlParams.get('lang') as Locale;
+		const storedLang = localStorage.getItem('locale') as Locale;
+
+		if (urlLang && SUPPORTED_LOCALES.includes(urlLang)) {
+			locale = urlLang;
+		} else if (storedLang && SUPPORTED_LOCALES.includes(storedLang)) {
+			locale = storedLang;
+		} else {
+			locale = detectLocale();
+		}
+
+		addLog('info', 'Ready');
 
 		if (capabilities.sharedArrayBuffer) {
 			preloadFFmpeg()
-				.then(() => addLog('success', 'FFmpeg initialized'))
-				.catch(() => addLog('warning', 'FFmpeg init failed'));
+				.then(() => addLog('success', 'FFmpeg loaded'))
+				.catch(() => addLog('warning', 'FFmpeg unavailable'));
 		}
 	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
 		const newFiles = event.detail.map(file => {
 			const type = detectFileType(file);
-			addLog('info', `File added: ${file.name}`, { size: file.size, type: type || 'unknown' });
+			addLog('info', `Added: ${file.name}`, { size: file.size });
 			return {
 				file,
 				type,
@@ -94,17 +127,15 @@
 
 		const totalFiles = fileItems.filter(item => item.selectedFormats.length > 0).length;
 		const totalFormats = fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0);
-		addLog('info', `Starting conversion: ${totalFiles} files → ${totalFormats} outputs`);
+		addLog('info', `Converting ${totalFiles} file(s)`);
 
 		const conversionPromises = fileItems.map(async (item) => {
 			if (item.selectedFormats.length === 0) return;
 
-			const fileStartTime = performance.now();
-			item.state = { status: 'converting', progress: 0, message: 'Initializing...', outputUrl: null, outputFileName: null };
+			item.state = { status: 'converting', progress: 0, message: t(locale, 'converting'), outputUrl: null, outputFileName: null };
 
 			const formatPromises = item.selectedFormats.map(async (format) => {
-				const formatStartTime = performance.now();
-				addLog('debug', `Converting: ${item.file.name} → .${format}`);
+				const startTime = performance.now();
 
 				try {
 					const result = await convertFile(item.file, format, (state) => {
@@ -118,47 +149,26 @@
 					const response = await fetch(result.url);
 					const blob = await response.blob();
 					const outputSize = blob.size;
-					const duration = performance.now() - formatStartTime;
-					const ratio = ((outputSize / item.file.size) * 100).toFixed(0);
 
-					addLog('success', `Done: ${item.file.name} → .${format}`, {
-						inputSize: item.file.size,
-						outputSize,
-						ratio: `${ratio}%`,
-						time: duration
+					addLog('success', `${item.file.name} → .${format}`, {
+						size: outputSize,
+						time: performance.now() - startTime
 					});
 
 					return { format, url: result.url, fileName: result.fileName, outputSize };
 				} catch (error) {
-					addLog('error', `Failed: ${item.file.name} → .${format}`, {
-						error: error instanceof Error ? error.message : 'Unknown error'
-					});
+					addLog('error', `Failed: ${item.file.name} → .${format}`);
 					return null;
 				}
 			});
 
 			const results = await Promise.all(formatPromises);
 			item.results = results.filter((r): r is { format: string; url: string; fileName: string; outputSize?: number } => r !== null);
-
-			const totalTime = performance.now() - fileStartTime;
-			addLog('success', `Completed: ${item.file.name}`, {
-				outputs: item.results.length,
-				totalTime
-			});
-
-			item.state = { status: 'complete', progress: 100, message: 'Complete', outputUrl: null, outputFileName: null };
+			item.state = { status: 'complete', progress: 100, message: t(locale, 'complete'), outputUrl: null, outputFileName: null };
 		});
 
 		await Promise.all(conversionPromises);
-
-		const totalTime = performance.now() - conversionStartTime;
-		const successCount = fileItems.reduce((sum, item) => sum + item.results.length, 0);
-		addLog('success', `All conversions complete`, {
-			files: totalFiles,
-			outputs: successCount,
-			totalTime
-		});
-
+		addLog('success', `Done in ${((performance.now() - conversionStartTime) / 1000).toFixed(1)}s`);
 		isConverting = false;
 	}
 
@@ -182,24 +192,103 @@
 		});
 		fileItems = [];
 		clearLogs();
-		addLog('info', 'Ready for new conversion');
 	}
 
 	let totalSelectedFormats = $derived(fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0));
 	let allComplete = $derived(fileItems.length > 0 && fileItems.every(item => item.state.status === 'complete'));
+
+	// JSON-LD structured data
+	const jsonLd = {
+		"@context": "https://schema.org",
+		"@type": "WebApplication",
+		"name": "Free Online File Converter",
+		"description": "Convert video, audio, and images instantly in your browser. No upload, no registration, 100% private.",
+		"url": "https://moyashianji.github.io/Pokonyan-OBSObstruction-Plugin/",
+		"applicationCategory": "MultimediaApplication",
+		"operatingSystem": "Any",
+		"offers": {
+			"@type": "Offer",
+			"price": "0",
+			"priceCurrency": "USD"
+		},
+		"featureList": [
+			"Video conversion (MP4, WebM, AVI, MOV, MKV)",
+			"Audio conversion (MP3, WAV, FLAC, AAC, OGG)",
+			"Image conversion (PNG, JPG, WebP, GIF, BMP)",
+			"No file upload required",
+			"100% browser-based processing",
+			"GPU-accelerated with WebCodecs API"
+		]
+	};
 </script>
 
 <svelte:head>
-	<title>File Converter</title>
+	<title>{t(locale, 'title')} - Convert Video, Audio, Images Online</title>
+	<meta name="description" content={t(locale, 'metaDescription')} />
+	<meta name="keywords" content="file converter, video converter, audio converter, image converter, online converter, free converter, mp4 converter, mp3 converter, png converter, webm, wav, flac, no upload, browser converter" />
+
+	<!-- Open Graph -->
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content={t(locale, 'title')} />
+	<meta property="og:description" content={t(locale, 'metaDescription')} />
+	<meta property="og:url" content="https://moyashianji.github.io/Pokonyan-OBSObstruction-Plugin/" />
+	<meta property="og:site_name" content="File Converter" />
+	<meta property="og:locale" content={locale} />
+
+	<!-- Twitter Card -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content={t(locale, 'title')} />
+	<meta name="twitter:description" content={t(locale, 'metaDescription')} />
+
+	<!-- Canonical & Alternates -->
+	<link rel="canonical" href="https://moyashianji.github.io/Pokonyan-OBSObstruction-Plugin/" />
+	{#each SUPPORTED_LOCALES as lang}
+		<link rel="alternate" hreflang={lang} href="https://moyashianji.github.io/Pokonyan-OBSObstruction-Plugin/?lang={lang}" />
+	{/each}
+	<link rel="alternate" hreflang="x-default" href="https://moyashianji.github.io/Pokonyan-OBSObstruction-Plugin/" />
+
+	<!-- JSON-LD -->
+	{@html `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`}
 </svelte:head>
 
 <main class="app" class:mounted>
-	<header class="header">
-		<h1>File Converter</h1>
-		<p>Convert files locally in your browser. Nothing is uploaded.</p>
+	<!-- Language Selector -->
+	<div class="lang-selector">
+		<button class="lang-btn" onclick={() => showLangMenu = !showLangMenu}>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="12" cy="12" r="10"/>
+				<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+			</svg>
+			{LOCALE_NAMES[locale]}
+		</button>
+		{#if showLangMenu}
+			<div class="lang-menu">
+				{#each SUPPORTED_LOCALES as lang}
+					<button
+						class="lang-option"
+						class:active={lang === locale}
+						onclick={() => setLocale(lang)}
+					>
+						{LOCALE_NAMES[lang]}
+					</button>
+				{/each}
+			</div>
+		{/if}
+	</div>
+
+	<!-- Hero -->
+	<header class="hero">
+		<h1>{t(locale, 'title')}</h1>
+		<p class="hero-desc">{t(locale, 'description')}</p>
+		<div class="hero-badges">
+			<span class="badge"><Icon name="lock" size={14} /> {t(locale, 'secure')}</span>
+			<span class="badge"><Icon name="zap" size={14} /> {t(locale, 'fast')}</span>
+			<span class="badge">{t(locale, 'free')}</span>
+		</div>
 	</header>
 
-	<div class="main-card">
+	<!-- Main Converter Card -->
+	<section class="converter-card">
 		{#if fileItems.length === 0}
 			<FileDropzone on:files={handleFiles} disabled={isConverting} />
 		{:else}
@@ -215,12 +304,12 @@
 								<p class="file-meta">
 									{formatFileSize(item.file.size)}
 									{#if item.selectedFormats.length > 0}
-										<span class="meta-sep">·</span>
-										<span class="format-badge">{item.selectedFormats.length} format{item.selectedFormats.length > 1 ? 's' : ''} selected</span>
+										<span class="meta-arrow">→</span>
+										<span class="meta-formats">{item.selectedFormats.length} {t(locale, 'selected')}</span>
 									{/if}
 								</p>
 							</div>
-							<button class="btn-close" onclick={() => removeFile(index)} disabled={isConverting} title="Remove">
+							<button class="btn-close" onclick={() => removeFile(index)} disabled={isConverting}>
 								<Icon name="x" size={16} />
 							</button>
 						</header>
@@ -231,16 +320,16 @@
 									{#each item.results as result}
 										<button class="download-btn" onclick={() => downloadResult(result)}>
 											<Icon name="download" size={14} />
-											<span>.{result.fileName.split('.').pop()}</span>
+											.{result.fileName.split('.').pop()}
 											{#if result.outputSize}
-												<span class="size">{formatFileSize(result.outputSize)}</span>
+												<span class="dl-size">{formatFileSize(result.outputSize)}</span>
 											{/if}
 										</button>
 									{/each}
 								</div>
 								{#if item.results.length > 1}
 									<button class="download-all" onclick={() => downloadAllResults(item)}>
-										Download all ({item.results.length})
+										{t(locale, 'downloadAll')} ({item.results.length})
 									</button>
 								{/if}
 							</div>
@@ -254,6 +343,7 @@
 									fileType={item.type}
 									selectedFormats={item.selectedFormats}
 									multiSelect={true}
+									{locale}
 									on:toggle={(e) => toggleFormat(index, e.detail)}
 								/>
 							</div>
@@ -264,40 +354,93 @@
 
 			{#if !isConverting && !allComplete}
 				<div class="add-more">
-					<FileDropzone on:files={handleFiles} compact={true} />
+					<FileDropzone on:files={handleFiles} compact={true} {locale} />
 				</div>
 			{/if}
 
 			<div class="actions">
 				{#if allComplete}
-					<button class="btn btn-default" onclick={reset}>
-						Start new conversion
-					</button>
+					<button class="btn btn-default" onclick={reset}>{t(locale, 'startNew')}</button>
 				{:else}
-					<button class="btn btn-ghost" onclick={reset} disabled={isConverting}>
-						Clear all
-					</button>
-					<button
-						class="btn btn-primary"
-						disabled={totalSelectedFormats === 0 || isConverting}
-						onclick={startConversion}
-					>
+					<button class="btn btn-ghost" onclick={reset} disabled={isConverting}>{t(locale, 'clearAll')}</button>
+					<button class="btn btn-primary" disabled={totalSelectedFormats === 0 || isConverting} onclick={startConversion}>
 						{#if isConverting}
 							<span class="btn-spinner"></span>
-							Converting...
+							{t(locale, 'converting')}
 						{:else}
-							Convert{#if totalSelectedFormats > 0}<span class="btn-badge">{totalSelectedFormats}</span>{/if}
+							{t(locale, 'convert')}{#if totalSelectedFormats > 0}<span class="btn-badge">{totalSelectedFormats}</span>{/if}
 						{/if}
 					</button>
 				{/if}
 			</div>
 
-			<LogPanel {logs} bind:expanded={logExpanded} maxHeight="220px" />
+			<LogPanel {logs} bind:expanded={logExpanded} maxHeight="180px" {locale} />
 		{/if}
-	</div>
+	</section>
 
+	<!-- How It Works -->
+	<section class="how-it-works">
+		<h2>{t(locale, 'howItWorks')}</h2>
+		<div class="steps">
+			<div class="step">
+				<div class="step-num">1</div>
+				<p>{t(locale, 'step1')}</p>
+			</div>
+			<div class="step">
+				<div class="step-num">2</div>
+				<p>{t(locale, 'step2')}</p>
+			</div>
+			<div class="step">
+				<div class="step-num">3</div>
+				<p>{t(locale, 'step3')}</p>
+			</div>
+		</div>
+	</section>
+
+	<!-- Features -->
+	<section class="features">
+		<h2>{t(locale, 'features')}</h2>
+		<div class="feature-grid">
+			<div class="feature">
+				<div class="feature-icon"><Icon name="lock" size={22} /></div>
+				<h3>{t(locale, 'feature1Title')}</h3>
+				<p>{t(locale, 'feature1Desc')}</p>
+			</div>
+			<div class="feature">
+				<div class="feature-icon"><Icon name="zap" size={22} /></div>
+				<h3>{t(locale, 'feature2Title')}</h3>
+				<p>{t(locale, 'feature2Desc')}</p>
+			</div>
+			<div class="feature">
+				<div class="feature-icon"><Icon name="layers" size={22} /></div>
+				<h3>{t(locale, 'feature3Title')}</h3>
+				<p>{t(locale, 'feature3Desc')}</p>
+			</div>
+		</div>
+	</section>
+
+	<!-- FAQ for SEO -->
+	<section class="faq">
+		<h2>{t(locale, 'faq')}</h2>
+		<div class="faq-list">
+			<details class="faq-item">
+				<summary>{t(locale, 'faq1Q')}</summary>
+				<p>{t(locale, 'faq1A')}</p>
+			</details>
+			<details class="faq-item">
+				<summary>{t(locale, 'faq2Q')}</summary>
+				<p>{t(locale, 'faq2A')}</p>
+			</details>
+			<details class="faq-item">
+				<summary>{t(locale, 'faq3Q')}</summary>
+				<p>{t(locale, 'faq3A')}</p>
+			</details>
+		</div>
+	</section>
+
+	<!-- Footer -->
 	<footer class="footer">
-		<div class="status">
+		<div class="footer-status">
 			<span class="status-item">
 				<span class="dot" class:active={capabilities.webcodecs}></span>
 				WebCodecs
@@ -307,14 +450,15 @@
 				FFmpeg
 			</span>
 		</div>
+		<p class="footer-note">{t(locale, 'noUpload')}</p>
 	</footer>
 </main>
 
 <style>
 	.app {
-		max-width: 680px;
+		max-width: 720px;
 		margin: 0 auto;
-		padding: 48px 24px 32px;
+		padding: 32px 20px 48px;
 		opacity: 0;
 		transition: opacity 0.25s ease;
 	}
@@ -323,30 +467,116 @@
 		opacity: 1;
 	}
 
-	/* Header */
-	.header {
-		margin-bottom: 28px;
+	/* Language Selector */
+	.lang-selector {
+		position: relative;
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 24px;
 	}
 
-	.header h1 {
-		font-size: 26px;
-		font-weight: 650;
-		letter-spacing: -0.025em;
-		margin-bottom: 6px;
-	}
-
-	.header p {
+	.lang-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 12px;
+		font-size: 13px;
 		color: var(--c-text-2);
-		font-size: 15px;
+		background: var(--c-surface);
+		border: 1px solid var(--c-border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: all 0.15s;
 	}
 
-	/* Main Card */
-	.main-card {
+	.lang-btn:hover {
+		color: var(--c-text);
+		border-color: var(--c-accent);
+	}
+
+	.lang-menu {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 4px;
+		background: var(--c-surface-raised);
+		border: 1px solid var(--c-border);
+		border-radius: var(--radius);
+		box-shadow: var(--shadow);
+		overflow: hidden;
+		z-index: 100;
+	}
+
+	.lang-option {
+		display: block;
+		width: 100%;
+		padding: 10px 16px;
+		font-size: 13px;
+		text-align: left;
+		color: var(--c-text-2);
+		background: none;
+		border: none;
+		cursor: pointer;
+		transition: all 0.1s;
+	}
+
+	.lang-option:hover {
+		background: var(--c-surface-hover);
+		color: var(--c-text);
+	}
+
+	.lang-option.active {
+		color: var(--c-accent);
+		background: var(--c-accent-subtle);
+	}
+
+	/* Hero */
+	.hero {
+		text-align: center;
+		margin-bottom: 32px;
+	}
+
+	.hero h1 {
+		font-size: 32px;
+		font-weight: 700;
+		letter-spacing: -0.03em;
+		margin-bottom: 8px;
+	}
+
+	.hero-desc {
+		font-size: 16px;
+		color: var(--c-text-2);
+		margin-bottom: 16px;
+	}
+
+	.hero-badges {
+		display: flex;
+		justify-content: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 6px 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--c-text-2);
+		background: var(--c-surface);
+		border: 1px solid var(--c-border);
+		border-radius: 20px;
+	}
+
+	/* Converter Card */
+	.converter-card {
 		background: var(--c-surface);
 		border: 1px solid var(--c-border);
 		border-radius: var(--radius-lg);
 		padding: 24px;
 		box-shadow: var(--shadow);
+		margin-bottom: 48px;
 	}
 
 	/* File List */
@@ -356,7 +586,6 @@
 		gap: 16px;
 	}
 
-	/* File Card */
 	.file-card {
 		background: var(--c-surface-raised);
 		border: 1px solid var(--c-border-subtle);
@@ -406,11 +635,12 @@
 		color: var(--c-text-3);
 	}
 
-	.meta-sep {
-		margin: 0 6px;
+	.meta-arrow {
+		margin: 0 4px;
+		color: var(--c-text-3);
 	}
 
-	.format-badge {
+	.meta-formats {
 		color: var(--c-accent);
 	}
 
@@ -439,9 +669,7 @@
 	}
 
 	/* Sections */
-	.format-section,
-	.progress-section,
-	.results-section {
+	.format-section, .progress-section, .results-section {
 		margin-top: 18px;
 		padding-top: 18px;
 		border-top: 1px solid var(--c-border-subtle);
@@ -474,10 +702,9 @@
 		background: color-mix(in srgb, var(--c-success) 18%, transparent);
 	}
 
-	.download-btn .size {
+	.dl-size {
 		font-size: 11px;
 		opacity: 0.7;
-		margin-left: 2px;
 	}
 
 	.download-all {
@@ -487,7 +714,6 @@
 		background: none;
 		border: none;
 		cursor: pointer;
-		padding: 4px 0;
 	}
 
 	.download-all:hover {
@@ -516,7 +742,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 11px 20px;
+		padding: 12px 20px;
 		font-size: 14px;
 		font-weight: 550;
 		border: none;
@@ -562,9 +788,6 @@
 	}
 
 	.btn-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
 		min-width: 20px;
 		height: 20px;
 		padding: 0 6px;
@@ -583,20 +806,156 @@
 		animation: spin 0.6s linear infinite;
 	}
 
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+	/* How It Works */
+	.how-it-works {
+		margin-bottom: 48px;
+	}
+
+	.how-it-works h2 {
+		font-size: 20px;
+		font-weight: 600;
+		text-align: center;
+		margin-bottom: 24px;
+	}
+
+	.steps {
+		display: flex;
+		justify-content: center;
+		gap: 32px;
+		flex-wrap: wrap;
+	}
+
+	.step {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.step-num {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--c-accent);
+		background: var(--c-accent-subtle);
+		border-radius: 50%;
+	}
+
+	.step p {
+		font-size: 14px;
+		color: var(--c-text-2);
+	}
+
+	/* Features */
+	.features {
+		margin-bottom: 48px;
+	}
+
+	.features h2 {
+		font-size: 20px;
+		font-weight: 600;
+		text-align: center;
+		margin-bottom: 24px;
+	}
+
+	.feature-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 20px;
+	}
+
+	.feature {
+		background: var(--c-surface);
+		border: 1px solid var(--c-border);
+		border-radius: var(--radius);
+		padding: 20px;
+	}
+
+	.feature-icon {
+		color: var(--c-accent);
+		margin-bottom: 12px;
+	}
+
+	.feature h3 {
+		font-size: 15px;
+		font-weight: 600;
+		margin-bottom: 6px;
+	}
+
+	.feature p {
+		font-size: 13px;
+		color: var(--c-text-2);
+		line-height: 1.5;
+	}
+
+	/* FAQ */
+	.faq {
+		margin-bottom: 48px;
+	}
+
+	.faq h2 {
+		font-size: 20px;
+		font-weight: 600;
+		text-align: center;
+		margin-bottom: 24px;
+	}
+
+	.faq-list {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.faq-item {
+		background: var(--c-surface);
+		border: 1px solid var(--c-border);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.faq-item summary {
+		padding: 16px 20px;
+		font-size: 14px;
+		font-weight: 550;
+		cursor: pointer;
+		list-style: none;
+	}
+
+	.faq-item summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.faq-item summary::after {
+		content: '+';
+		float: right;
+		font-size: 18px;
+		color: var(--c-text-3);
+	}
+
+	.faq-item[open] summary::after {
+		content: '−';
+	}
+
+	.faq-item p {
+		padding: 0 20px 16px;
+		font-size: 13px;
+		color: var(--c-text-2);
+		line-height: 1.6;
 	}
 
 	/* Footer */
 	.footer {
-		margin-top: 28px;
-		display: flex;
-		justify-content: center;
+		text-align: center;
 	}
 
-	.status {
+	.footer-status {
 		display: flex;
+		justify-content: center;
 		gap: 16px;
+		margin-bottom: 8px;
 	}
 
 	.status-item {
@@ -620,13 +979,22 @@
 		opacity: 1;
 	}
 
+	.footer-note {
+		font-size: 12px;
+		color: var(--c-text-3);
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
 	/* Responsive */
-	@media (max-width: 520px) {
-		.app {
-			padding: 24px 16px;
+	@media (max-width: 600px) {
+		.hero h1 {
+			font-size: 26px;
 		}
 
-		.main-card {
+		.converter-card {
 			padding: 18px;
 		}
 
@@ -644,6 +1012,12 @@
 
 		.btn-ghost {
 			order: 1;
+		}
+
+		.steps {
+			flex-direction: column;
+			align-items: center;
+			gap: 16px;
 		}
 	}
 </style>

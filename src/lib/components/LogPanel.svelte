@@ -9,13 +9,16 @@
 </script>
 
 <script lang="ts">
+	import { t, type Locale } from '$lib/i18n';
+
 	interface Props {
 		logs: LogEntry[];
 		expanded?: boolean;
 		maxHeight?: string;
+		locale?: Locale;
 	}
 
-	let { logs = [], expanded = $bindable(false), maxHeight = '220px' }: Props = $props();
+	let { logs = [], expanded = $bindable(false), maxHeight = '220px', locale = 'en' }: Props = $props();
 	let container: HTMLDivElement | null = $state(null);
 
 	$effect(() => {
@@ -57,7 +60,7 @@
 
 <div class="log-panel">
 	<button class="toggle" onclick={() => expanded = !expanded}>
-		<span class="toggle-label">Conversion Log</span>
+		<span class="toggle-label">{t(locale, 'conversionLog')}</span>
 		<span class="toggle-count">{logs.length}</span>
 		<svg class="toggle-icon" class:open={expanded} width="12" height="12" viewBox="0 0 12 12" fill="none">
 			<path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -67,7 +70,7 @@
 	{#if expanded}
 		<div class="log-content" bind:this={container} style="max-height: {maxHeight}">
 			{#if logs.length === 0}
-				<div class="empty">No log entries yet</div>
+				<div class="empty">{t(locale, 'noLogs')}</div>
 			{:else}
 				{#each logs as log (log.id)}
 					{@const config = levelConfig[log.level]}

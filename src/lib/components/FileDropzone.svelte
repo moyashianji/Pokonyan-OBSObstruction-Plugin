@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import Icon from './Icon.svelte';
+	import { t, type Locale } from '$lib/i18n';
 
 	interface Props {
 		accept?: string;
 		multiple?: boolean;
 		disabled?: boolean;
 		compact?: boolean;
+		locale?: Locale;
 	}
 
-	let { accept = '*', multiple = true, disabled = false, compact = false }: Props = $props();
+	let { accept = '*', multiple = true, disabled = false, compact = false, locale = 'en' }: Props = $props();
 
 	let isDragging = $state(false);
 	const dispatch = createEventDispatcher<{ files: File[] }>();
@@ -68,18 +70,18 @@
 				<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
 					<path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 				</svg>
-				Add more files
+				{t(locale, 'addMore')}
 			</span>
 		{:else}
 			<div class="icon-wrap">
 				<Icon name="upload" size={28} />
 			</div>
 			<div class="text">
-				<span class="primary">Drop files here</span>
-				<span class="secondary">or click to browse</span>
+				<span class="primary">{t(locale, 'dropFiles')}</span>
+				<span class="secondary">{t(locale, 'orClickToBrowse')}</span>
 			</div>
 			<div class="supported">
-				Supports video, audio, and image files
+				{t(locale, 'supportsFormats')}
 			</div>
 		{/if}
 	</label>
