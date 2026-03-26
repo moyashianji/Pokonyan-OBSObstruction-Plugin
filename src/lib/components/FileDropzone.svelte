@@ -9,30 +9,7 @@
 
 	let { accept = '*', multiple = true, disabled = false }: Props = $props();
 
-	let isDragging = $state(false);
-
 	const dispatch = createEventDispatcher<{ files: File[] }>();
-
-	function handleDragOver(e: DragEvent) {
-		e.preventDefault();
-		if (!disabled) isDragging = true;
-	}
-
-	function handleDragLeave(e: DragEvent) {
-		e.preventDefault();
-		isDragging = false;
-	}
-
-	function handleDrop(e: DragEvent) {
-		e.preventDefault();
-		isDragging = false;
-		if (disabled || !e.dataTransfer) return;
-
-		const files = Array.from(e.dataTransfer.files);
-		if (files.length > 0) {
-			dispatch('files', files);
-		}
-	}
 
 	function handleChange(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -43,107 +20,59 @@
 	}
 </script>
 
-<div
-	class="dropzone-wrapper"
-	class:dragging={isDragging}
-	ondragover={handleDragOver}
-	ondragleave={handleDragLeave}
-	ondrop={handleDrop}
->
+<div class="upload-container">
+	<p class="upload-text">ファイルを選択してください</p>
 	<input
 		type="file"
-		id="file-upload-input"
 		accept={accept}
 		multiple={multiple}
 		onchange={handleChange}
 		disabled={disabled}
-		class="sr-only"
+		class="file-input"
 	/>
-
-	<label for="file-upload-input" class="dropzone-label">
-		<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-			<polyline points="17 8 12 3 7 8" />
-			<line x1="12" y1="3" x2="12" y2="15" />
-		</svg>
-		<span class="dropzone-text">
-			ファイルをドラッグ&ドロップ<br />
-			または<span class="highlight">タップして選択</span>
-		</span>
-		<span class="dropzone-hint">
-			動画・音声・画像・ドキュメントに対応
-		</span>
-	</label>
+	<p class="upload-hint">動画・音声・画像・ドキュメントに対応</p>
 </div>
 
 <style>
-	.dropzone-wrapper {
-		width: 100%;
-	}
-
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border-width: 0;
-	}
-
-	.dropzone-label {
+	.upload-container {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		width: 100%;
-		min-height: 200px;
+		gap: 1.5rem;
 		padding: 2rem;
 		border: 2px dashed var(--color-border, #475569);
 		border-radius: 1rem;
 		background: rgba(255, 255, 255, 0.02);
-		cursor: pointer;
-		transition: all 0.3s ease;
-		-webkit-tap-highlight-color: rgba(99, 102, 241, 0.3);
 	}
 
-	.dropzone-label:hover,
-	.dropzone-wrapper.dragging .dropzone-label {
-		border-color: var(--color-primary, #6366f1);
-		background: rgba(99, 102, 241, 0.1);
-	}
-
-	.dropzone-label:active {
-		transform: scale(0.98);
-	}
-
-	.upload-icon {
-		width: 4rem;
-		height: 4rem;
-		color: var(--color-primary, #6366f1);
-		pointer-events: none;
-	}
-
-	.dropzone-text {
+	.upload-text {
 		font-size: 1.1rem;
 		color: var(--color-text, #f8fafc);
-		line-height: 1.6;
-		text-align: center;
-		pointer-events: none;
 	}
 
-	.highlight {
+	.file-input {
+		font-size: 1rem;
+		color: var(--color-text, #f8fafc);
+		padding: 1rem;
+		background: var(--color-primary, #6366f1);
+		border: none;
+		border-radius: 0.5rem;
+		cursor: pointer;
+	}
+
+	.file-input::file-selector-button {
+		padding: 0.75rem 1.5rem;
+		margin-right: 1rem;
+		background: white;
 		color: var(--color-primary, #6366f1);
+		border: none;
+		border-radius: 0.5rem;
 		font-weight: 600;
+		cursor: pointer;
 	}
 
-	.dropzone-hint {
+	.upload-hint {
 		font-size: 0.875rem;
 		color: var(--color-text-secondary, #94a3b8);
-		text-align: center;
-		pointer-events: none;
 	}
 </style>
