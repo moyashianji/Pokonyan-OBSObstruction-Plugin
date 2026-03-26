@@ -16,6 +16,15 @@
 		type FileType
 	} from '$lib/converter';
 	import {
+		turboConvert,
+		turboBatchConvert,
+		turboMultiFormatConvert,
+		preloadEngines,
+		getEngineStatus,
+		type ConversionJob
+	} from '$lib/turbo-converter';
+	import { getProcessingStats } from '$lib/parallel-engine';
+	import {
 		detectLocale,
 		t,
 		SUPPORTED_LOCALES,
@@ -81,13 +90,23 @@
 			locale = detectLocale();
 		}
 
-		addLog('info', 'Ready');
+		const stats = getProcessingStats();
+		addLog('info', 'Turbo engine ready', {
+			cores: stats.hardwareConcurrency,
+			memory: `${stats.maxMemoryMB}MB`
+		});
 
-		if (capabilities.sharedArrayBuffer) {
-			preloadFFmpeg()
-				.then(() => addLog('success', 'FFmpeg loaded'))
-				.catch(() => addLog('warning', 'FFmpeg unavailable'));
-		}
+		// Preload all engines for instant conversion
+		preloadEngines()
+			.then(() => {
+				const status = getEngineStatus();
+				addLog('success', 'Engines loaded', {
+					WebCodecs: status.webcodecs ? 'OK' : 'N/A',
+					FFmpeg: status.ffmpeg ? 'OK' : 'N/A',
+					workers: status.workerCount
+				});
+			})
+			.catch(() => addLog('warning', 'Engine preload partial'));
 	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
@@ -125,50 +144,101 @@
 		conversionStartTime = performance.now();
 		logExpanded = true;
 
+		const stats = getProcessingStats();
 		const totalFiles = fileItems.filter(item => item.selectedFormats.length > 0).length;
 		const totalFormats = fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0);
-		addLog('info', `Converting ${totalFiles} file(s)`);
 
-		const conversionPromises = fileItems.map(async (item) => {
-			if (item.selectedFormats.length === 0) return;
-
-			item.state = { status: 'converting', progress: 0, message: t(locale, 'converting'), outputUrl: null, outputFileName: null };
-
-			const formatPromises = item.selectedFormats.map(async (format) => {
-				const startTime = performance.now();
-
-				try {
-					const result = await convertFile(item.file, format, (state) => {
-						item.state = {
-							...item.state,
-							progress: Math.max(item.state.progress, state.progress || 0),
-							message: state.message || item.state.message
-						};
-					});
-
-					const response = await fetch(result.url);
-					const blob = await response.blob();
-					const outputSize = blob.size;
-
-					addLog('success', `${item.file.name} → .${format}`, {
-						size: outputSize,
-						time: performance.now() - startTime
-					});
-
-					return { format, url: result.url, fileName: result.fileName, outputSize };
-				} catch (error) {
-					addLog('error', `Failed: ${item.file.name} → .${format}`);
-					return null;
-				}
-			});
-
-			const results = await Promise.all(formatPromises);
-			item.results = results.filter((r): r is { format: string; url: string; fileName: string; outputSize?: number } => r !== null);
-			item.state = { status: 'complete', progress: 100, message: t(locale, 'complete'), outputUrl: null, outputFileName: null };
+		addLog('info', `Turbo conversion: ${totalFiles} files → ${totalFormats} outputs`, {
+			workers: stats.hardwareConcurrency,
+			maxMemory: `${stats.maxMemoryMB}MB`
 		});
 
-		await Promise.all(conversionPromises);
-		addLog('success', `Done in ${((performance.now() - conversionStartTime) / 1000).toFixed(1)}s`);
+		// Build job list for batch processing
+		const jobs: Array<{ itemIndex: number; format: string; job: ConversionJob }> = [];
+		fileItems.forEach((item, itemIndex) => {
+			if (item.selectedFormats.length === 0) return;
+			item.state = { status: 'converting', progress: 0, message: t(locale, 'converting'), outputUrl: null, outputFileName: null };
+
+			item.selectedFormats.forEach(format => {
+				jobs.push({
+					itemIndex,
+					format,
+					job: { file: item.file, outputFormat: format, priority: item.file.size < 10 * 1024 * 1024 ? 1 : 0 }
+				});
+			});
+		});
+
+		// Process all jobs in parallel using turbo engine
+		let completedJobs = 0;
+		const startTime = performance.now();
+
+		await Promise.all(
+			jobs.map(async ({ itemIndex, format, job }) => {
+				const item = fileItems[itemIndex];
+				const jobStartTime = performance.now();
+
+				try {
+					const result = await turboConvert(
+						job.file,
+						job.outputFormat,
+						(progress, message) => {
+							// Update item progress (max across all formats)
+							const currentProgress = item.state.progress;
+							const newProgress = Math.max(currentProgress, progress * (item.selectedFormats.indexOf(format) + 1) / item.selectedFormats.length);
+							item.state = { ...item.state, progress: newProgress, message };
+						}
+					);
+
+					completedJobs++;
+					const elapsed = performance.now() - startTime;
+					const speed = (completedJobs / jobs.length) * 100;
+
+					if (result.success && result.blob) {
+						const url = URL.createObjectURL(result.blob);
+						item.results = [
+							...item.results,
+							{ format, url, fileName: result.fileName!, outputSize: result.stats.outputSize }
+						];
+
+						addLog('success', `${job.file.name} → .${format}`, {
+							in: result.stats.inputSize,
+							out: result.stats.outputSize,
+							time: result.stats.duration,
+							method: result.stats.method
+						});
+					} else {
+						addLog('error', `Failed: ${job.file.name} → .${format}`, {
+							error: result.error || 'Unknown'
+						});
+					}
+				} catch (error) {
+					completedJobs++;
+					addLog('error', `Error: ${job.file.name} → .${format}`);
+				}
+
+				// Check if all formats for this item are done
+				const itemJobs = jobs.filter(j => j.itemIndex === itemIndex);
+				const itemCompleted = itemJobs.every(j => {
+					return item.results.some(r => r.format === j.format) ||
+						completedJobs >= jobs.length;
+				});
+
+				if (item.results.length >= item.selectedFormats.length || itemCompleted) {
+					item.state = { status: 'complete', progress: 100, message: t(locale, 'complete'), outputUrl: null, outputFileName: null };
+				}
+			})
+		);
+
+		const totalDuration = performance.now() - conversionStartTime;
+		const totalInputSize = jobs.reduce((sum, j) => sum + j.job.file.size, 0);
+		const throughput = (totalInputSize / (1024 * 1024)) / (totalDuration / 1000);
+
+		addLog('success', `Complete`, {
+			totalTime: totalDuration,
+			throughput: `${throughput.toFixed(1)} MB/s`,
+			jobs: completedJobs
+		});
+
 		isConverting = false;
 	}
 
