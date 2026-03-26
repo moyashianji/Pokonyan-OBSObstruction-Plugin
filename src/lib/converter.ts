@@ -3,7 +3,7 @@
  *
  * Best-in-class conversion using:
  * - Canvas API for images (fastest, native)
- * - FFmpeg.wasm for audio/video (full format support)
+ * - FFmpeg.wasm for audio/video (comprehensive format support)
  * - Service Worker for SharedArrayBuffer headers
  */
 
@@ -14,10 +14,12 @@ import {
 	isFFmpegAvailable,
 	isFFmpegLoaded,
 	FFMPEG_VIDEO_FORMATS,
-	FFMPEG_AUDIO_FORMATS
+	FFMPEG_AUDIO_FORMATS,
+	FFMPEG_IMAGE_OUTPUTS
 } from './ffmpeg-converter';
 import { convertAudio, isAudioFile, getSupportedAudioFormats as getNativeAudioFormats } from './audio-converter';
 import { convertVideo, isVideoFile, getSupportedVideoFormats as getNativeVideoFormats } from './video-converter';
+import { COMMON_VIDEO_OUTPUTS, COMMON_AUDIO_OUTPUTS, COMMON_IMAGE_OUTPUTS } from './formats';
 
 export type FileType = 'image' | 'audio' | 'video' | 'document' | null;
 export type ConversionStatus = 'idle' | 'loading' | 'converting' | 'complete' | 'error';
@@ -50,17 +52,32 @@ export function getOutputFormats(fileType: FileType): string[] {
 
 	switch (fileType) {
 		case 'image':
+			// Images use Canvas API for common formats, FFmpeg for others
+			if (ffmpegEnabled) {
+				return [...COMMON_IMAGE_OUTPUTS];
+			}
 			return getSupportedImageFormats();
+
 		case 'audio':
-			return ffmpegEnabled ? FFMPEG_AUDIO_FORMATS : getNativeAudioFormats();
+			if (ffmpegEnabled) {
+				return COMMON_AUDIO_OUTPUTS;
+			}
+			return getNativeAudioFormats();
+
 		case 'video':
 			if (ffmpegEnabled) {
-				// Video can convert to video formats, audio formats, or image formats
-				return [...FFMPEG_VIDEO_FORMATS, ...FFMPEG_AUDIO_FORMATS.slice(0, 3), 'png', 'jpg'];
+				// Video can output to video, audio, or image formats
+				return [
+					...COMMON_VIDEO_OUTPUTS,
+					'mp3', 'wav', 'aac', 'ogg', 'flac',  // Audio extraction
+					'png', 'jpg', 'webp'  // Frame extraction
+				];
 			}
 			return [...getNativeVideoFormats(), 'wav', 'png', 'jpg'];
+
 		case 'document':
 			return ['txt'];
+
 		default:
 			return [];
 	}
@@ -82,65 +99,51 @@ export async function convertFile(
 	try {
 		let result: { blob: Blob; fileName: string };
 
-		switch (fileType) {
-			case 'image':
-				// Always use Canvas API for images (fastest)
-				onProgress?.({ progress: 10, message: '画像を処理中...' });
-				result = await convertImage(file, outputFormat as any);
-				break;
+		// Determine if we should use FFmpeg
+		const useFFmpeg = isFFmpegAvailable() && (
+			fileType === 'audio' ||
+			fileType === 'video' ||
+			(fileType === 'image' && !getSupportedImageFormats().includes(outputFormat as any))
+		);
 
-			case 'audio':
-				// Use FFmpeg if available, otherwise native
-				if (isFFmpegAvailable()) {
-					result = await convertWithFFmpeg(
-						file,
-						outputFormat,
-						(progress, message) => {
-							onProgress?.({ progress, message });
-						}
-					);
-				} else {
-					result = await convertAudio(
-						file,
-						outputFormat as any,
-						{},
-						(progress) => {
-							onProgress?.({ progress, message: `音声を変換中... ${progress}%` });
-						}
-					);
+		if (fileType === 'image' && getSupportedImageFormats().includes(outputFormat as any)) {
+			// Use fast Canvas API for common image formats
+			onProgress?.({ progress: 10, message: '画像を処理中...' });
+			result = await convertImage(file, outputFormat as any);
+		} else if (useFFmpeg) {
+			// Use FFmpeg for audio, video, and advanced image formats
+			result = await convertWithFFmpeg(
+				file,
+				outputFormat,
+				(progress, message) => {
+					onProgress?.({ progress, message });
 				}
-				break;
-
-			case 'video':
-				// Use FFmpeg if available for full format support
-				if (isFFmpegAvailable()) {
-					result = await convertWithFFmpeg(
-						file,
-						outputFormat,
-						(progress, message) => {
-							onProgress?.({ progress, message });
-						}
-					);
-				} else {
-					// Fallback to native APIs
-					const outputType = ['mp3', 'wav', 'ogg'].includes(outputFormat) ? 'audio' :
-									   ['png', 'jpg', 'jpeg'].includes(outputFormat) ? 'image' : 'video';
-					result = await convertVideo(
-						file,
-						{ format: outputFormat as any, outputType },
-						(progress) => {
-							onProgress?.({ progress, message: `動画を変換中... ${progress}%` });
-						}
-					);
+			);
+		} else if (fileType === 'audio') {
+			// Fallback to native audio API
+			result = await convertAudio(
+				file,
+				outputFormat as any,
+				{},
+				(progress) => {
+					onProgress?.({ progress, message: `音声を変換中... ${progress}%` });
 				}
-				break;
-
-			case 'document':
-				result = await convertDocument(file, outputFormat);
-				break;
-
-			default:
-				throw new Error('サポートされていないファイル形式です');
+			);
+		} else if (fileType === 'video') {
+			// Fallback to native video API
+			const outputType = ['mp3', 'wav', 'ogg'].includes(outputFormat) ? 'audio' :
+							   ['png', 'jpg', 'jpeg'].includes(outputFormat) ? 'image' : 'video';
+			result = await convertVideo(
+				file,
+				{ format: outputFormat as any, outputType },
+				(progress) => {
+					onProgress?.({ progress, message: `動画を変換中... ${progress}%` });
+				}
+			);
+		} else if (fileType === 'document') {
+			result = await convertDocument(file, outputFormat);
+		} else {
+			throw new Error('サポートされていないファイル形式です');
 		}
 
 		const url = URL.createObjectURL(result.blob);
@@ -188,7 +191,6 @@ export function formatFileSize(bytes: number): string {
 	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Pre-initialize FFmpeg in the background
 export async function preloadFFmpeg(): Promise<void> {
 	if (isFFmpegAvailable() && !isFFmpegLoaded()) {
 		try {

@@ -4,7 +4,7 @@
  * Zero dependencies, ultra-fast, works everywhere
  */
 
-export type ImageFormat = 'png' | 'jpeg' | 'jpg' | 'webp' | 'bmp' | 'gif';
+export type ImageFormat = 'png' | 'jpeg' | 'jpg' | 'webp' | 'bmp' | 'gif' | 'avif';
 
 export interface ImageConversionOptions {
 	quality?: number; // 0-1 for lossy formats
@@ -19,11 +19,22 @@ const MIME_TYPES: Record<ImageFormat, string> = {
 	jpg: 'image/jpeg',
 	webp: 'image/webp',
 	bmp: 'image/bmp',
-	gif: 'image/gif'
+	gif: 'image/gif',
+	avif: 'image/avif'
 };
 
 export function getSupportedImageFormats(): ImageFormat[] {
-	return ['png', 'jpeg', 'webp', 'gif', 'bmp'];
+	const formats: ImageFormat[] = ['png', 'jpeg', 'webp', 'gif', 'bmp'];
+
+	// Check AVIF support
+	const canvas = document.createElement('canvas');
+	canvas.width = 1;
+	canvas.height = 1;
+	if (canvas.toDataURL('image/avif').startsWith('data:image/avif')) {
+		formats.push('avif');
+	}
+
+	return formats;
 }
 
 export async function convertImage(
