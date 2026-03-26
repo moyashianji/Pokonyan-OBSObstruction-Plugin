@@ -8,13 +8,15 @@
 		detectFileType,
 		formatFileSize,
 		preloadFFmpeg,
+		getSystemCapabilities,
 		type ConversionState
 	} from '$lib/converter';
 
 	let files = $state<File[]>([]);
 	let selectedFormat = $state('');
 	let fileType = $state<'video' | 'audio' | 'image' | 'document' | null>(null);
-	let ffmpegStatus = $state<'loading' | 'ready' | 'unavailable' | 'idle'>('idle');
+
+	let capabilities = $state({ webcodecs: false, ffmpeg: false, sharedArrayBuffer: false });
 
 	let conversionState = $state<ConversionState>({
 		status: 'idle',
@@ -27,14 +29,12 @@
 	let isConverting = $derived(conversionState.status === 'converting' || conversionState.status === 'loading');
 
 	onMount(() => {
-		// Preload FFmpeg in the background after page loads
-		if (typeof SharedArrayBuffer !== 'undefined') {
-			ffmpegStatus = 'loading';
-			preloadFFmpeg()
-				.then(() => { ffmpegStatus = 'ready'; })
-				.catch(() => { ffmpegStatus = 'unavailable'; });
-		} else {
-			ffmpegStatus = 'unavailable';
+		// Check system capabilities
+		capabilities = getSystemCapabilities();
+
+		// Preload FFmpeg in the background (only if SharedArrayBuffer available)
+		if (capabilities.sharedArrayBuffer) {
+			preloadFFmpeg().catch(console.warn);
 		}
 	});
 
@@ -197,14 +197,16 @@
 
 	<section class="features">
 		<div class="feature">
-			<div class="feature-icon">
+			<div class="feature-icon gpu">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="12" cy="12" r="10" />
-					<polyline points="12 6 12 12 16 14" />
+					<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
 				</svg>
 			</div>
-			<h3>超高速変換</h3>
-			<p>ブラウザのネイティブAPIで、サーバーを経由せず即座に変換</p>
+			<h3>GPU高速変換</h3>
+			<p>WebCodecs APIでハードウェアアクセラレーション</p>
+			<span class="status-badge" class:active={capabilities.webcodecs}>
+				{capabilities.webcodecs ? '有効' : '未対応'}
+			</span>
 		</div>
 		<div class="feature">
 			<div class="feature-icon">
@@ -214,7 +216,8 @@
 				</svg>
 			</div>
 			<h3>完全プライベート</h3>
-			<p>ファイルはブラウザ内で処理。サーバーにアップロードされません</p>
+			<p>ファイルはブラウザ内で処理。サーバー送信なし</p>
+			<span class="status-badge active">常時有効</span>
 		</div>
 		<div class="feature">
 			<div class="feature-icon">
@@ -224,8 +227,11 @@
 					<path d="M2 12l10 5 10-5" />
 				</svg>
 			</div>
-			<h3>多形式対応</h3>
-			<p>動画・音声・画像など、幅広いフォーマットに対応</p>
+			<h3>50+形式対応</h3>
+			<p>FFmpegで全フォーマット変換可能</p>
+			<span class="status-badge" class:active={capabilities.ffmpeg}>
+				{capabilities.ffmpeg ? '有効' : 'ネイティブのみ'}
+			</span>
 		</div>
 	</section>
 </main>
@@ -486,6 +492,26 @@
 		font-size: 0.875rem;
 		color: var(--color-text-secondary);
 		line-height: 1.5;
+		margin-bottom: 0.5rem;
+	}
+
+	.feature-icon.gpu {
+		color: var(--color-accent);
+	}
+
+	.status-badge {
+		display: inline-block;
+		padding: 0.2rem 0.5rem;
+		font-size: 0.7rem;
+		font-weight: 600;
+		border-radius: 0.25rem;
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-secondary);
+	}
+
+	.status-badge.active {
+		background: rgba(16, 185, 129, 0.2);
+		color: var(--color-success);
 	}
 
 	@media (max-width: 640px) {
