@@ -10,7 +10,6 @@
 	let { accept = '*', multiple = true, disabled = false }: Props = $props();
 
 	let isDragging = $state(false);
-	let fileInputEl: HTMLInputElement;
 
 	const dispatch = createEventDispatcher<{ files: File[] }>();
 
@@ -42,51 +41,39 @@
 			input.value = '';
 		}
 	}
-
-	function triggerFileSelect() {
-		if (!disabled && fileInputEl) {
-			fileInputEl.click();
-		}
-	}
 </script>
 
 <div
 	class="dropzone-wrapper"
 	class:dragging={isDragging}
-	class:disabled={disabled}
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
 >
 	<input
-		bind:this={fileInputEl}
 		type="file"
+		id="file-upload-input"
 		accept={accept}
 		multiple={multiple}
 		onchange={handleChange}
 		disabled={disabled}
-		style="display: none;"
+		class="sr-only"
 	/>
 
-	<button
-		type="button"
-		class="dropzone-button"
-		onclick={triggerFileSelect}
-		disabled={disabled}
-	>
+	<label for="file-upload-input" class="dropzone-label">
 		<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 			<polyline points="17 8 12 3 7 8" />
 			<line x1="12" y1="3" x2="12" y2="15" />
 		</svg>
-		<p class="dropzone-text">
+		<span class="dropzone-text">
 			ファイルをドラッグ&ドロップ<br />
 			または<span class="highlight">タップして選択</span>
-		</p>
-		<p class="dropzone-hint">
+		</span>
+		<span class="dropzone-hint">
 			動画・音声・画像・ドキュメントに対応
-		</p>
-	</button>
+		</span>
+	</label>
 </div>
 
 <style>
@@ -94,7 +81,19 @@
 		width: 100%;
 	}
 
-	.dropzone-button {
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border-width: 0;
+	}
+
+	.dropzone-label {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -109,28 +108,23 @@
 		cursor: pointer;
 		transition: all 0.3s ease;
 		-webkit-tap-highlight-color: rgba(99, 102, 241, 0.3);
-		touch-action: manipulation;
 	}
 
-	.dropzone-button:hover,
-	.dropzone-wrapper.dragging .dropzone-button {
+	.dropzone-label:hover,
+	.dropzone-wrapper.dragging .dropzone-label {
 		border-color: var(--color-primary, #6366f1);
 		background: rgba(99, 102, 241, 0.1);
 	}
 
-	.dropzone-button:active {
+	.dropzone-label:active {
 		transform: scale(0.98);
-	}
-
-	.dropzone-button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	.upload-icon {
 		width: 4rem;
 		height: 4rem;
 		color: var(--color-primary, #6366f1);
+		pointer-events: none;
 	}
 
 	.dropzone-text {
@@ -138,6 +132,7 @@
 		color: var(--color-text, #f8fafc);
 		line-height: 1.6;
 		text-align: center;
+		pointer-events: none;
 	}
 
 	.highlight {
@@ -149,5 +144,6 @@
 		font-size: 0.875rem;
 		color: var(--color-text-secondary, #94a3b8);
 		text-align: center;
+		pointer-events: none;
 	}
 </style>
