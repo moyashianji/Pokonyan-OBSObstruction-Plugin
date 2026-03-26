@@ -84,11 +84,13 @@
 		left: 0;
 		opacity: 0;
 		cursor: pointer;
+		z-index: 10;
 	}
 
 	.dropzone {
 		position: relative;
 		display: block;
+		overflow: hidden;
 		border: 2px dashed var(--color-border);
 		border-radius: 1rem;
 		padding: 3rem 2rem;
@@ -121,6 +123,9 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 1rem;
+		pointer-events: none;
+		position: relative;
+		z-index: 1;
 	}
 
 	.upload-icon {
