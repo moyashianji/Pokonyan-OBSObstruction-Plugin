@@ -10,8 +10,6 @@
 	let { accept = '*', multiple = true, disabled = false }: Props = $props();
 
 	let isDragging = $state(false);
-	let dropzone: HTMLDivElement;
-	let fileInput: HTMLInputElement;
 
 	const dispatch = createEventDispatcher<{ files: File[] }>();
 
@@ -40,43 +38,27 @@
 		const target = e.target as HTMLInputElement;
 		if (target.files && target.files.length > 0) {
 			dispatch('files', Array.from(target.files));
-			// Reset input so the same file can be selected again
 			target.value = '';
 		}
 	}
-
-	function openFileDialog() {
-		if (disabled) return;
-		fileInput?.click();
-	}
 </script>
 
-<input
-	bind:this={fileInput}
-	type="file"
-	{accept}
-	{multiple}
-	onchange={handleFileInput}
-	class="hidden-input"
-	aria-hidden="true"
-	tabindex="-1"
-/>
-
-<div
-	bind:this={dropzone}
+<label
 	class="dropzone"
 	class:dragging={isDragging}
 	class:disabled={disabled}
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
-	onclick={openFileDialog}
-	onkeydown={(e) => e.key === 'Enter' && openFileDialog()}
-	ontouchend={(e) => { e.preventDefault(); openFileDialog(); }}
-	role="button"
-	tabindex="0"
-	aria-label="ファイルをドロップまたはクリックして選択"
 >
+	<input
+		type="file"
+		{accept}
+		{multiple}
+		onchange={handleFileInput}
+		class="file-input"
+		disabled={disabled}
+	/>
 	<div class="dropzone-content">
 		<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -91,22 +73,22 @@
 			動画・音声・画像・ドキュメントに対応
 		</p>
 	</div>
-</div>
+</label>
 
 <style>
-	.hidden-input {
+	.file-input {
 		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
+		width: 100%;
+		height: 100%;
+		top: 0;
+		left: 0;
+		opacity: 0;
+		cursor: pointer;
 	}
 
 	.dropzone {
+		position: relative;
+		display: block;
 		border: 2px dashed var(--color-border);
 		border-radius: 1rem;
 		padding: 3rem 2rem;
