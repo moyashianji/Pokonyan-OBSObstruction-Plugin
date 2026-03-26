@@ -10,6 +10,7 @@
 	let { accept = '*', multiple = true, disabled = false }: Props = $props();
 
 	let isDragging = $state(false);
+	let fileInputEl: HTMLInputElement;
 
 	const dispatch = createEventDispatcher<{ files: File[] }>();
 
@@ -34,17 +35,23 @@
 		}
 	}
 
-	function handleFileInput(e: Event) {
-		const target = e.target as HTMLInputElement;
-		if (target.files && target.files.length > 0) {
-			dispatch('files', Array.from(target.files));
-			target.value = '';
+	function handleChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		if (input.files && input.files.length > 0) {
+			dispatch('files', Array.from(input.files));
+			input.value = '';
+		}
+	}
+
+	function triggerFileSelect() {
+		if (!disabled && fileInputEl) {
+			fileInputEl.click();
 		}
 	}
 </script>
 
-<label
-	class="dropzone"
+<div
+	class="dropzone-wrapper"
 	class:dragging={isDragging}
 	class:disabled={disabled}
 	ondragover={handleDragOver}
@@ -52,14 +59,21 @@
 	ondrop={handleDrop}
 >
 	<input
+		bind:this={fileInputEl}
 		type="file"
-		{accept}
-		{multiple}
-		onchange={handleFileInput}
-		class="file-input"
+		accept={accept}
+		multiple={multiple}
+		onchange={handleChange}
 		disabled={disabled}
+		style="display: none;"
 	/>
-	<div class="dropzone-content">
+
+	<button
+		type="button"
+		class="dropzone-button"
+		onclick={triggerFileSelect}
+		disabled={disabled}
+	>
 		<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 			<polyline points="17 8 12 3 7 8" />
@@ -67,86 +81,73 @@
 		</svg>
 		<p class="dropzone-text">
 			ファイルをドラッグ&ドロップ<br />
-			または<span class="highlight">クリックして選択</span>
+			または<span class="highlight">タップして選択</span>
 		</p>
 		<p class="dropzone-hint">
 			動画・音声・画像・ドキュメントに対応
 		</p>
-	</div>
-</label>
+	</button>
+</div>
 
 <style>
-	.file-input {
-		position: absolute;
+	.dropzone-wrapper {
 		width: 100%;
-		height: 100%;
-		top: 0;
-		left: 0;
-		opacity: 0;
-		cursor: pointer;
-		z-index: 10;
 	}
 
-	.dropzone {
-		position: relative;
-		display: block;
-		overflow: hidden;
-		border: 2px dashed var(--color-border);
-		border-radius: 1rem;
-		padding: 3rem 2rem;
-		text-align: center;
-		cursor: pointer;
-		transition: all 0.3s ease;
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.dropzone:hover,
-	.dropzone.dragging {
-		border-color: var(--color-primary);
-		background: rgba(99, 102, 241, 0.1);
-		transform: scale(1.01);
-	}
-
-	.dropzone.disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.dropzone.disabled:hover {
-		transform: none;
-		border-color: var(--color-border);
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.dropzone-content {
+	.dropzone-button {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		gap: 1rem;
-		pointer-events: none;
-		position: relative;
-		z-index: 1;
+		width: 100%;
+		min-height: 200px;
+		padding: 2rem;
+		border: 2px dashed var(--color-border, #475569);
+		border-radius: 1rem;
+		background: rgba(255, 255, 255, 0.02);
+		cursor: pointer;
+		transition: all 0.3s ease;
+		-webkit-tap-highlight-color: rgba(99, 102, 241, 0.3);
+		touch-action: manipulation;
+	}
+
+	.dropzone-button:hover,
+	.dropzone-wrapper.dragging .dropzone-button {
+		border-color: var(--color-primary, #6366f1);
+		background: rgba(99, 102, 241, 0.1);
+	}
+
+	.dropzone-button:active {
+		transform: scale(0.98);
+	}
+
+	.dropzone-button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.upload-icon {
 		width: 4rem;
 		height: 4rem;
-		color: var(--color-primary);
+		color: var(--color-primary, #6366f1);
 	}
 
 	.dropzone-text {
 		font-size: 1.1rem;
-		color: var(--color-text);
+		color: var(--color-text, #f8fafc);
 		line-height: 1.6;
+		text-align: center;
 	}
 
 	.highlight {
-		color: var(--color-primary);
+		color: var(--color-primary, #6366f1);
 		font-weight: 600;
 	}
 
 	.dropzone-hint {
 		font-size: 0.875rem;
-		color: var(--color-text-secondary);
+		color: var(--color-text-secondary, #94a3b8);
+		text-align: center;
 	}
 </style>
