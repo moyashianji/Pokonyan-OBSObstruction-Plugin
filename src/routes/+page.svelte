@@ -28,24 +28,14 @@
 	let mounted = $state(false);
 	let isConverting = $state(false);
 
-	// Logging system
+	// Logging
 	let logs = $state<LogEntry[]>([]);
 	let logExpanded = $state(false);
 	let logIdCounter = $state(0);
 	let conversionStartTime = $state<number>(0);
 
-	function addLog(
-		level: LogEntry['level'],
-		message: string,
-		details?: Record<string, string | number>
-	) {
-		logs = [...logs, {
-			id: logIdCounter++,
-			timestamp: new Date(),
-			level,
-			message,
-			details
-		}];
+	function addLog(level: LogEntry['level'], message: string, details?: Record<string, string | number>) {
+		logs = [...logs, { id: logIdCounter++, timestamp: new Date(), level, message, details }];
 	}
 
 	function clearLogs() {
@@ -55,39 +45,27 @@
 	onMount(() => {
 		mounted = true;
 		capabilities = getSystemCapabilities();
-
-		addLog('info', 'システム初期化完了', {
-			WebCodecs: capabilities.webcodecs ? 'Yes' : 'No',
-			SharedArrayBuffer: capabilities.sharedArrayBuffer ? 'Yes' : 'No'
+		addLog('info', 'Ready', {
+			WebCodecs: capabilities.webcodecs ? 'OK' : 'N/A',
+			SharedArrayBuffer: capabilities.sharedArrayBuffer ? 'OK' : 'N/A'
 		});
 
 		if (capabilities.sharedArrayBuffer) {
-			addLog('info', 'FFmpeg.wasm プリロード開始...');
 			preloadFFmpeg()
-				.then(() => addLog('success', 'FFmpeg.wasm 準備完了'))
-				.catch(() => addLog('warning', 'FFmpeg.wasm プリロード失敗 (必要時に再試行)'));
+				.then(() => addLog('success', 'FFmpeg loaded'))
+				.catch(() => addLog('warning', 'FFmpeg load failed'));
 		}
 	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
 		const newFiles = event.detail.map(file => {
 			const type = detectFileType(file);
-			addLog('info', `ファイル追加: ${file.name}`, {
-				size: file.size,
-				type: type || 'unknown',
-				mimeType: file.type || 'unknown'
-			});
+			addLog('info', `Added: ${file.name}`, { size: file.size });
 			return {
 				file,
 				type,
 				selectedFormats: [] as string[],
-				state: {
-					status: 'idle' as const,
-					progress: 0,
-					message: '',
-					outputUrl: null,
-					outputFileName: null
-				},
+				state: { status: 'idle' as const, progress: 0, message: '', outputUrl: null, outputFileName: null },
 				results: []
 			};
 		});
@@ -104,141 +82,68 @@
 	}
 
 	function removeFile(index: number) {
-		// Cleanup URLs
 		fileItems[index].results.forEach(r => URL.revokeObjectURL(r.url));
-		if (fileItems[index].state.outputUrl) {
-			URL.revokeObjectURL(fileItems[index].state.outputUrl!);
-		}
+		if (fileItems[index].state.outputUrl) URL.revokeObjectURL(fileItems[index].state.outputUrl!);
 		fileItems = fileItems.filter((_, i) => i !== index);
-	}
-
-	async function convertSingleFileToFormat(fileItem: FileItem, format: string): Promise<{ format: string; url: string; fileName: string }> {
-		const result = await convertFile(fileItem.file, format, (state) => {
-			fileItem.state = { ...fileItem.state, ...state };
-		});
-		return { format, url: result.url, fileName: result.fileName };
 	}
 
 	async function startConversion() {
 		isConverting = true;
 		conversionStartTime = performance.now();
-		logExpanded = true; // Auto-expand log panel when starting
+		logExpanded = true;
 
 		const totalFiles = fileItems.filter(item => item.selectedFormats.length > 0).length;
 		const totalFormats = fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0);
+		addLog('info', `Converting ${totalFiles} file(s) to ${totalFormats} format(s)`);
 
-		addLog('info', `変換開始: ${totalFiles}ファイル → ${totalFormats}形式`, {
-			parallelJobs: totalFormats
-		});
-
-		// Process all files in parallel
-		const conversionPromises = fileItems.map(async (item, fileIndex) => {
+		const conversionPromises = fileItems.map(async (item) => {
 			if (item.selectedFormats.length === 0) return;
 
 			const fileStartTime = performance.now();
-			addLog('debug', `[${item.file.name}] 変換キュー投入`, {
-				inputSize: item.file.size,
-				formats: item.selectedFormats.length
-			});
+			item.state = { status: 'converting', progress: 0, message: 'Starting...', outputUrl: null, outputFileName: null };
 
-			item.state = {
-				status: 'converting',
-				progress: 0,
-				message: '変換開始...',
-				outputUrl: null,
-				outputFileName: null
-			};
-
-			// Convert to all selected formats in parallel
 			const formatPromises = item.selectedFormats.map(async (format) => {
 				const formatStartTime = performance.now();
-				addLog('info', `[${item.file.name}] → ${format.toUpperCase()} 開始`);
+				addLog('debug', `${item.file.name} → ${format.toUpperCase()}`);
 
 				try {
 					const result = await convertFile(item.file, format, (state) => {
-						// Update progress (average across formats)
-						const currentProgress = item.state.progress;
 						item.state = {
 							...item.state,
-							progress: Math.max(currentProgress, state.progress || 0),
+							progress: Math.max(item.state.progress, state.progress || 0),
 							message: state.message || item.state.message
 						};
-
-						// Log progress milestones
-						if (state.progress && state.progress % 25 === 0 && state.progress > 0) {
-							addLog('debug', `[${item.file.name}] → ${format.toUpperCase()} ${state.progress}%`, {
-								elapsed: performance.now() - formatStartTime
-							});
-						}
-
-						// Log method selection
-						if (state.method && state.progress === 0) {
-							addLog('debug', `[${item.file.name}] 変換エンジン: ${state.method.toUpperCase()}`);
-						}
 					});
 
-					// Get output size by fetching the blob
 					const response = await fetch(result.url);
 					const blob = await response.blob();
 					const outputSize = blob.size;
-					const compressionRatio = outputSize / item.file.size;
 					const duration = performance.now() - formatStartTime;
 
-					addLog('success', `[${item.file.name}] → ${format.toUpperCase()} 完了`, {
-						inputSize: item.file.size,
-						outputSize: outputSize,
-						compressionRatio: compressionRatio,
-						duration: duration,
-						speed: (item.file.size / 1024 / 1024) / (duration / 1000)
+					addLog('success', `${item.file.name} → ${format.toUpperCase()}`, {
+						in: item.file.size,
+						out: outputSize,
+						time: duration
 					});
 
 					return { format, url: result.url, fileName: result.fileName, outputSize };
 				} catch (error) {
-					const duration = performance.now() - formatStartTime;
-					addLog('error', `[${item.file.name}] → ${format.toUpperCase()} 失敗: ${error instanceof Error ? error.message : 'Unknown error'}`, {
-						duration: duration
+					addLog('error', `Failed: ${item.file.name} → ${format}`, {
+						error: error instanceof Error ? error.message : 'Unknown'
 					});
-					console.error(`Failed to convert to ${format}:`, error);
 					return null;
 				}
 			});
 
 			const results = await Promise.all(formatPromises);
 			item.results = results.filter((r): r is { format: string; url: string; fileName: string; outputSize?: number } => r !== null);
+			item.state = { status: 'complete', progress: 100, message: 'Done', outputUrl: null, outputFileName: null };
 
-			const fileDuration = performance.now() - fileStartTime;
-			addLog('success', `[${item.file.name}] 全変換完了`, {
-				successCount: item.results.length,
-				failCount: item.selectedFormats.length - item.results.length,
-				totalTime: fileDuration
-			});
-
-			item.state = {
-				status: 'complete',
-				progress: 100,
-				message: `${item.results.length}形式の変換完了`,
-				outputUrl: null,
-				outputFileName: null
-			};
+			addLog('success', `${item.file.name} complete`, { formats: item.results.length, time: performance.now() - fileStartTime });
 		});
 
 		await Promise.all(conversionPromises);
-
-		const totalDuration = performance.now() - conversionStartTime;
-		const successCount = fileItems.reduce((sum, item) => sum + item.results.length, 0);
-		const totalInputSize = fileItems.reduce((sum, item) => item.selectedFormats.length > 0 ? sum + item.file.size : sum, 0);
-		const totalOutputSize = fileItems.reduce((sum, item) =>
-			sum + item.results.reduce((s, r) => s + (r.outputSize || 0), 0), 0);
-
-		addLog('success', `全処理完了`, {
-			totalFiles: totalFiles,
-			totalFormats: successCount,
-			totalDuration: totalDuration,
-			totalInputSize: totalInputSize,
-			totalOutputSize: totalOutputSize,
-			avgSpeed: (totalInputSize / 1024 / 1024) / (totalDuration / 1000)
-		});
-
+		addLog('success', 'All done', { total: performance.now() - conversionStartTime });
 		isConverting = false;
 	}
 
@@ -252,123 +157,75 @@
 	}
 
 	function downloadAllResults(item: FileItem) {
-		item.results.forEach(result => {
-			downloadResult(result);
-		});
+		item.results.forEach(downloadResult);
 	}
 
 	function reset() {
 		fileItems.forEach(item => {
 			item.results.forEach(r => URL.revokeObjectURL(r.url));
-			if (item.state.outputUrl) {
-				URL.revokeObjectURL(item.state.outputUrl!);
-			}
+			if (item.state.outputUrl) URL.revokeObjectURL(item.state.outputUrl!);
 		});
 		fileItems = [];
 		clearLogs();
-		addLog('info', 'リセット完了 - 新しい変換を開始できます');
+		addLog('info', 'Reset');
 	}
 
 	let totalSelectedFormats = $derived(fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0));
 	let allComplete = $derived(fileItems.length > 0 && fileItems.every(item => item.state.status === 'complete'));
-	let hasResults = $derived(fileItems.some(item => item.results.length > 0));
 </script>
 
 <svelte:head>
-	<title>Universal Converter - 究極のファイル変換</title>
-	<meta name="description" content="ブラウザで完結する究極のファイル変換ツール。GPU高速変換、50+形式対応、完全プライベート。" />
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+	<title>Converter</title>
 </svelte:head>
 
-<main class="container" class:mounted>
-	<!-- Header -->
+<main class="app" class:mounted>
 	<header class="header">
-		<div class="logo">
-			<Icon name="zap" size={32} />
-		</div>
-		<h1 class="title">
-			<span class="gradient-text">Universal</span> Converter
-		</h1>
-		<p class="subtitle">
-			GPU高速変換 · 50+形式対応 · 複数ファイル並列処理
-		</p>
-
-		<!-- Capability Badges -->
-		<div class="badges">
-			<span class="badge" class:active={capabilities.webcodecs}>
-				<Icon name="gpu" size={14} />
-				GPU高速
-			</span>
-			<span class="badge active">
-				<Icon name="lock" size={14} />
-				プライベート
-			</span>
-			<span class="badge" class:active={capabilities.ffmpeg}>
-				<Icon name="layers" size={14} />
-				50+形式
-			</span>
-		</div>
+		<h1>File Converter</h1>
+		<p class="desc">Browser-based conversion. No upload, no server.</p>
 	</header>
 
-	<!-- Main Card -->
-	<div class="main-card glass">
+	<div class="card">
 		{#if fileItems.length === 0}
 			<FileDropzone on:files={handleFiles} disabled={isConverting} />
 		{:else}
-			<!-- File List -->
 			<div class="file-list">
 				{#each fileItems as item, index}
-					<div class="file-item" class:complete={item.state.status === 'complete'}>
-						<!-- File Header -->
+					<div class="file-item" class:done={item.state.status === 'complete'}>
 						<div class="file-header">
-							<div class="file-icon-wrapper">
-								<Icon name={item.type === 'video' ? 'video' : item.type === 'audio' ? 'audio' : item.type === 'image' ? 'image' : 'document'} size={20} />
-							</div>
 							<div class="file-info">
-								<p class="file-name">{item.file.name}</p>
-								<p class="file-meta">
-									{formatFileSize(item.file.size)} · {item.type?.toUpperCase()}
+								<span class="file-name">{item.file.name}</span>
+								<span class="file-meta">
+									{formatFileSize(item.file.size)}
 									{#if item.selectedFormats.length > 0}
-										<span class="format-count">→ {item.selectedFormats.length}形式</span>
+										<span class="arrow">→</span> {item.selectedFormats.length} format{item.selectedFormats.length > 1 ? 's' : ''}
 									{/if}
-								</p>
+								</span>
 							</div>
-							<button class="btn-icon" onclick={() => removeFile(index)} disabled={isConverting}>
-								<Icon name="x" size={18} />
+							<button class="btn-remove" onclick={() => removeFile(index)} disabled={isConverting}>
+								<Icon name="x" size={16} />
 							</button>
 						</div>
 
-						<!-- Format Selection or Results -->
 						{#if item.state.status === 'complete' && item.results.length > 0}
-							<div class="results-section">
-								<div class="results-header">
-									<span class="results-label">変換完了</span>
-									<button class="btn btn-sm btn-secondary" onclick={() => downloadAllResults(item)}>
+							<div class="results">
+								{#each item.results as result}
+									<button class="result-item" onclick={() => downloadResult(result)}>
 										<Icon name="download" size={14} />
-										全てダウンロード
+										<span>.{result.fileName.split('.').pop()}</span>
 									</button>
-								</div>
-								<div class="results-grid">
-									{#each item.results as result}
-										<button class="result-btn" onclick={() => downloadResult(result)}>
-											<Icon name="download" size={16} />
-											<span>{result.fileName.split('.').pop()?.toUpperCase()}</span>
-										</button>
-									{/each}
-								</div>
+								{/each}
+								{#if item.results.length > 1}
+									<button class="result-item all" onclick={() => downloadAllResults(item)}>
+										Download all
+									</button>
+								{/if}
 							</div>
 						{:else if item.state.status === 'converting'}
-							<div class="progress-section">
-								<ConversionProgress
-									progress={item.state.progress}
-									status={item.state.status}
-									message={item.state.message}
-								/>
+							<div class="progress-wrap">
+								<ConversionProgress progress={item.state.progress} status={item.state.status} message={item.state.message} />
 							</div>
 						{:else}
-							<div class="format-section">
+							<div class="format-wrap">
 								<FormatSelector
 									fileType={item.type}
 									selectedFormats={item.selectedFormats}
@@ -381,192 +238,100 @@
 				{/each}
 			</div>
 
-			<!-- Add More Files -->
 			{#if !isConverting && !allComplete}
-				<div class="add-more">
+				<div class="add-section">
 					<FileDropzone on:files={handleFiles} compact={true} />
 				</div>
 			{/if}
 
-			<!-- Action Buttons -->
-			<div class="action-bar">
+			<div class="actions">
 				{#if allComplete}
-					<button class="btn btn-secondary" onclick={reset}>
-						<Icon name="refresh" size={18} />
-						新しい変換
-					</button>
+					<button class="btn" onclick={reset}>New conversion</button>
 				{:else}
-					<button class="btn btn-secondary" onclick={reset} disabled={isConverting}>
-						<Icon name="x" size={18} />
-						クリア
-					</button>
-					<button
-						class="btn btn-primary btn-lg"
-						disabled={totalSelectedFormats === 0 || isConverting}
-						onclick={startConversion}
-					>
+					<button class="btn secondary" onclick={reset} disabled={isConverting}>Clear</button>
+					<button class="btn primary" disabled={totalSelectedFormats === 0 || isConverting} onclick={startConversion}>
 						{#if isConverting}
 							<span class="spinner"></span>
-							変換中...
+							Converting...
 						{:else}
-							<Icon name="play" size={18} />
-							{totalSelectedFormats > 0 ? `${fileItems.length}ファイル × ${totalSelectedFormats}形式 変換開始` : '形式を選択'}
+							Convert {totalSelectedFormats > 0 ? `(${totalSelectedFormats})` : ''}
 						{/if}
 					</button>
 				{/if}
 			</div>
 
-			<!-- Log Panel -->
-			<div class="log-section">
-				<LogPanel {logs} bind:expanded={logExpanded} maxHeight="250px" />
-			</div>
+			<LogPanel {logs} bind:expanded={logExpanded} maxHeight="200px" />
 		{/if}
 	</div>
 
-	<!-- Features -->
-	<section class="features">
-		<div class="feature glass">
-			<div class="feature-icon">
-				<Icon name="zap" size={28} />
-			</div>
-			<h3>GPU高速変換</h3>
-			<p>WebCodecs APIでハードウェア支援。従来の10-100倍高速。</p>
-		</div>
-		<div class="feature glass">
-			<div class="feature-icon">
-				<Icon name="layers" size={28} />
-			</div>
-			<h3>並列処理</h3>
-			<p>複数ファイル・複数形式を同時に変換。待ち時間を大幅短縮。</p>
-		</div>
-		<div class="feature glass">
-			<div class="feature-icon">
-				<Icon name="lock" size={28} />
-			</div>
-			<h3>完全プライベート</h3>
-			<p>全てブラウザ内で処理。サーバーに一切送信されません。</p>
-		</div>
-	</section>
-
 	<footer class="footer">
-		<p>Powered by WebCodecs · Canvas API · FFmpeg.wasm</p>
+		<span>Local processing only</span>
+		<span class="sep">·</span>
+		<span>WebCodecs {capabilities.webcodecs ? '✓' : '✗'}</span>
+		<span class="sep">·</span>
+		<span>FFmpeg {capabilities.sharedArrayBuffer ? '✓' : '✗'}</span>
 	</footer>
 </main>
 
 <style>
-	.container {
-		max-width: 900px;
+	.app {
+		max-width: 640px;
 		margin: 0 auto;
-		padding: 2rem 1rem;
+		padding: 48px 20px;
 		opacity: 0;
-		transition: opacity 0.5s ease;
+		transition: opacity 0.2s;
 	}
 
-	.container.mounted {
+	.app.mounted {
 		opacity: 1;
 	}
 
-	/* Header */
 	.header {
-		text-align: center;
-		margin-bottom: 2rem;
+		margin-bottom: 32px;
 	}
 
-	.logo {
-		margin-bottom: 0.75rem;
-		color: var(--color-primary);
-	}
-
-	.title {
-		font-size: 2.25rem;
-		font-weight: 700;
-		margin-bottom: 0.5rem;
+	.header h1 {
+		font-size: 24px;
+		font-weight: 600;
 		letter-spacing: -0.02em;
+		margin-bottom: 4px;
 	}
 
-	.gradient-text {
-		background: var(--gradient-primary);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+	.desc {
+		color: var(--c-text-2);
+		font-size: 14px;
 	}
 
-	.subtitle {
-		font-size: 0.95rem;
-		color: var(--color-text-secondary);
-		margin-bottom: 1rem;
+	.card {
+		background: var(--c-surface);
+		border: 1px solid var(--c-border);
+		border-radius: var(--radius-lg);
+		padding: 20px;
 	}
 
-	/* Badges */
-	.badges {
-		display: flex;
-		justify-content: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-
-	.badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.35rem 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		border-radius: 2rem;
-		background: var(--color-bg-tertiary);
-		color: var(--color-text-muted);
-		border: 1px solid var(--color-border);
-	}
-
-	.badge.active {
-		background: rgba(16, 185, 129, 0.15);
-		color: var(--color-success);
-		border-color: rgba(16, 185, 129, 0.3);
-	}
-
-	/* Main Card */
-	.main-card {
-		border-radius: var(--radius-xl);
-		padding: 1.5rem;
-		margin-bottom: 2rem;
-		box-shadow: var(--shadow-lg);
-	}
-
-	/* File List */
 	.file-list {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 16px;
 	}
 
 	.file-item {
-		background: var(--color-bg-tertiary);
-		border-radius: var(--radius-lg);
-		padding: 1rem;
-		border: 1px solid var(--color-border);
-		transition: all 0.2s ease;
+		background: var(--c-surface-raised);
+		border: 1px solid var(--c-border-subtle);
+		border-radius: var(--radius);
+		padding: 16px;
 	}
 
-	.file-item.complete {
-		border-color: rgba(16, 185, 129, 0.3);
-		background: rgba(16, 185, 129, 0.05);
+	.file-item.done {
+		border-color: var(--c-success);
+		border-color: color-mix(in srgb, var(--c-success) 40%, var(--c-border-subtle));
 	}
 
 	.file-header {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.file-icon-wrapper {
-		width: 2.5rem;
-		height: 2.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--gradient-primary);
-		border-radius: var(--radius-md);
-		color: white;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 12px;
 	}
 
 	.file-info {
@@ -575,142 +340,112 @@
 	}
 
 	.file-name {
-		font-weight: 600;
-		font-size: 0.9rem;
+		display: block;
+		font-weight: 500;
+		font-size: 14px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
 	.file-meta {
-		font-size: 0.75rem;
-		color: var(--color-text-secondary);
+		display: block;
+		font-size: 12px;
+		color: var(--c-text-3);
+		margin-top: 2px;
 	}
 
-	.format-count {
-		color: var(--color-primary-light);
-		font-weight: 500;
+	.arrow {
+		color: var(--c-accent);
 	}
 
-	.btn-icon {
-		width: 2rem;
-		height: 2rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: transparent;
+	.btn-remove {
+		background: none;
 		border: none;
-		border-radius: var(--radius-sm);
-		color: var(--color-text-secondary);
+		color: var(--c-text-3);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		padding: 4px;
+		border-radius: var(--radius-sm);
+		transition: color 0.15s, background 0.15s;
 	}
 
-	.btn-icon:hover:not(:disabled) {
-		color: var(--color-error);
-		background: rgba(239, 68, 68, 0.1);
+	.btn-remove:hover:not(:disabled) {
+		color: var(--c-error);
+		background: var(--c-error-subtle);
 	}
 
-	.btn-icon:disabled {
-		opacity: 0.5;
+	.btn-remove:disabled {
+		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
-	/* Format Section */
-	.format-section {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
+	.format-wrap, .progress-wrap {
+		margin-top: 16px;
+		padding-top: 16px;
+		border-top: 1px solid var(--c-border-subtle);
 	}
 
-	/* Progress Section */
-	.progress-section {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
-	}
-
-	/* Results Section */
-	.results-section {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid rgba(16, 185, 129, 0.2);
-	}
-
-	.results-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.75rem;
-	}
-
-	.results-label {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--color-success);
-	}
-
-	.results-grid {
+	.results {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: 8px;
+		margin-top: 12px;
 	}
 
-	.result-btn {
+	.result-item {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.8rem;
-		font-weight: 600;
-		background: var(--color-bg-glass);
-		border: 1px solid var(--color-success);
+		gap: 6px;
+		padding: 6px 12px;
+		font-size: 13px;
+		font-weight: 500;
+		background: var(--c-success-subtle);
+		color: var(--c-success);
+		border: none;
 		border-radius: var(--radius-sm);
-		color: var(--color-success);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background 0.15s;
 	}
 
-	.result-btn:hover {
-		background: rgba(16, 185, 129, 0.15);
+	.result-item:hover {
+		background: color-mix(in srgb, var(--c-success) 20%, transparent);
 	}
 
-	/* Add More */
-	.add-more {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px dashed var(--color-border);
+	.result-item.all {
+		background: var(--c-accent-subtle);
+		color: var(--c-accent);
 	}
 
-	/* Log Section */
-	.log-section {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
+	.result-item.all:hover {
+		background: color-mix(in srgb, var(--c-accent) 20%, transparent);
 	}
 
-	/* Action Bar */
-	.action-bar {
+	.add-section {
+		margin-top: 16px;
+		padding-top: 16px;
+		border-top: 1px dashed var(--c-border);
+	}
+
+	.actions {
 		display: flex;
-		gap: 0.75rem;
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
+		gap: 8px;
+		margin-top: 20px;
+		padding-top: 16px;
+		border-top: 1px solid var(--c-border);
 	}
 
-	/* Buttons */
 	.btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.65rem 1.25rem;
-		font-size: 0.9rem;
+		gap: 8px;
+		padding: 10px 16px;
+		font-size: 14px;
 		font-weight: 500;
 		border: none;
-		border-radius: var(--radius-md);
+		border-radius: var(--radius);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: background 0.15s, opacity 0.15s;
 	}
 
 	.btn:disabled {
@@ -718,110 +453,57 @@
 		cursor: not-allowed;
 	}
 
-	.btn-sm {
-		padding: 0.4rem 0.75rem;
-		font-size: 0.75rem;
-	}
-
-	.btn-lg {
+	.btn.primary {
 		flex: 1;
-		padding: 0.85rem 1.5rem;
-		font-size: 0.95rem;
-	}
-
-	.btn-primary {
-		background: var(--gradient-primary);
+		background: var(--c-accent);
 		color: white;
 	}
 
-	.btn-primary:hover:not(:disabled) {
-		box-shadow: var(--shadow-glow);
-		transform: translateY(-1px);
+	.btn.primary:hover:not(:disabled) {
+		background: var(--c-accent-dim);
 	}
 
-	.btn-secondary {
-		background: var(--color-bg-tertiary);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
+	.btn.secondary {
+		background: var(--c-surface-raised);
+		color: var(--c-text);
+		border: 1px solid var(--c-border);
 	}
 
-	.btn-secondary:hover:not(:disabled) {
-		border-color: var(--color-primary);
-		background: rgba(99, 102, 241, 0.1);
+	.btn.secondary:hover:not(:disabled) {
+		background: var(--c-border-subtle);
 	}
 
 	.spinner {
-		width: 1rem;
-		height: 1rem;
-		border: 2px solid rgba(255, 255, 255, 0.3);
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(255,255,255,0.3);
 		border-top-color: white;
 		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
+		animation: spin 0.6s linear infinite;
 	}
 
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* Features */
-	.features {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.feature {
-		padding: 1.25rem;
-		border-radius: var(--radius-lg);
-		text-align: center;
-		transition: transform 0.15s ease;
-	}
-
-	.feature:hover {
-		transform: translateY(-2px);
-	}
-
-	.feature-icon {
-		color: var(--color-primary);
-		margin-bottom: 0.75rem;
-	}
-
-	.feature h3 {
-		font-size: 0.95rem;
-		font-weight: 600;
-		margin-bottom: 0.35rem;
-	}
-
-	.feature p {
-		font-size: 0.75rem;
-		color: var(--color-text-secondary);
-		line-height: 1.4;
-	}
-
-	/* Footer */
 	.footer {
+		margin-top: 24px;
 		text-align: center;
-		padding: 1rem;
-		color: var(--color-text-muted);
-		font-size: 0.7rem;
+		font-size: 12px;
+		color: var(--c-text-3);
 	}
 
-	/* Mobile */
-	@media (max-width: 640px) {
-		.title {
-			font-size: 1.75rem;
+	.sep {
+		margin: 0 6px;
+		opacity: 0.5;
+	}
+
+	@media (max-width: 480px) {
+		.app {
+			padding: 24px 16px;
 		}
 
-		.main-card {
-			padding: 1rem;
-		}
-
-		.action-bar {
+		.actions {
 			flex-direction: column;
 		}
 
-		.btn-lg {
+		.btn {
 			width: 100%;
 		}
 	}

@@ -2,12 +2,10 @@
 	import { createEventDispatcher } from 'svelte';
 	import { getOutputFormats } from '$lib/converter';
 	import { VIDEO_FORMATS, AUDIO_FORMATS, IMAGE_FORMATS, type FormatInfo } from '$lib/formats';
-	import Icon from './Icon.svelte';
 
 	interface FormatOption {
 		value: string;
 		label: string;
-		description?: string;
 		category: 'video' | 'audio' | 'image';
 	}
 
@@ -16,15 +14,13 @@
 		selectedFormats?: string[];
 		multiSelect?: boolean;
 		fileType?: 'video' | 'audio' | 'image' | 'document' | null;
-		compact?: boolean;
 	}
 
 	let {
 		selectedFormat = '',
 		selectedFormats = [],
 		multiSelect = false,
-		fileType = null,
-		compact = false
+		fileType = null
 	}: Props = $props();
 
 	const dispatch = createEventDispatcher<{ select: string; toggle: string }>();
@@ -33,106 +29,61 @@
 		...VIDEO_FORMATS,
 		...AUDIO_FORMATS,
 		...IMAGE_FORMATS,
-		txt: { label: 'TXT', description: 'テキスト', category: 'image', mimeType: 'text/plain' }
+		txt: { label: 'TXT', description: 'Text', category: 'image', mimeType: 'text/plain' }
 	};
 
-	const categoryConfig: Record<string, { label: string; icon: 'video' | 'audio' | 'image'; color: string }> = {
-		video: { label: '動画', icon: 'video', color: '#8b5cf6' },
-		audio: { label: '音声', icon: 'audio', color: '#06b6d4' },
-		image: { label: '画像', icon: 'image', color: '#10b981' }
+	const categories = {
+		video: 'Video',
+		audio: 'Audio',
+		image: 'Image'
 	};
-
-	const categoryOrder = ['video', 'audio', 'image'];
 
 	let availableFormats = $derived.by(() => {
 		if (!fileType) return [];
-
-		const formats = getOutputFormats(fileType);
-		return formats.map(f => ({
+		return getOutputFormats(fileType).map(f => ({
 			value: f,
 			label: allFormats[f]?.label || f.toUpperCase(),
-			description: allFormats[f]?.description || '',
 			category: allFormats[f]?.category || 'image'
 		}));
 	});
 
 	let groupedFormats = $derived.by(() => {
 		const groups: Record<string, FormatOption[]> = {};
-
 		for (const format of availableFormats) {
-			if (!groups[format.category]) {
-				groups[format.category] = [];
-			}
+			if (!groups[format.category]) groups[format.category] = [];
 			groups[format.category].push(format);
 		}
-
-		const sorted: [string, FormatOption[]][] = [];
-		for (const cat of categoryOrder) {
-			if (groups[cat]) {
-				sorted.push([cat, groups[cat]]);
-			}
-		}
-
-		return sorted;
+		return Object.entries(groups).sort(([a], [b]) => {
+			const order = ['video', 'audio', 'image'];
+			return order.indexOf(a) - order.indexOf(b);
+		});
 	});
 
-	function isSelected(formatValue: string): boolean {
-		if (multiSelect) {
-			return selectedFormats.includes(formatValue);
-		}
-		return selectedFormat === formatValue;
+	function isSelected(value: string): boolean {
+		return multiSelect ? selectedFormats.includes(value) : selectedFormat === value;
 	}
 
 	function handleClick(format: string) {
-		if (multiSelect) {
-			dispatch('toggle', format);
-		} else {
-			dispatch('select', format);
-		}
+		dispatch(multiSelect ? 'toggle' : 'select', format);
 	}
 </script>
 
-<div class="format-selector" class:compact>
-	{#if !compact}
-		<h3 class="selector-title">
-			<Icon name="refresh" size={18} />
-			<span>変換先の形式</span>
-			{#if multiSelect}
-				<span class="multi-hint">複数選択可</span>
-			{/if}
-		</h3>
-	{/if}
-
+<div class="selector">
 	{#if availableFormats.length === 0}
-		<p class="no-formats">利用可能な形式がありません</p>
+		<p class="empty">No formats available</p>
 	{:else}
-		{#each groupedFormats as [category, formats], i}
-			{@const config = categoryConfig[category]}
-			<div class="format-group" style="animation-delay: {i * 50}ms">
-				<h4 class="group-header">
-					<Icon name={config.icon} size={14} />
-					<span class="group-label">{config.label}</span>
-					<span class="group-count">{formats.length}</span>
-				</h4>
-				<div class="format-grid">
-					{#each formats as format, j}
+		{#each groupedFormats as [category, formats]}
+			<div class="group">
+				<div class="group-label">{categories[category as keyof typeof categories]} ({formats.length})</div>
+				<div class="grid">
+					{#each formats as format}
 						<button
-							class="format-btn"
+							type="button"
+							class="format"
 							class:selected={isSelected(format.value)}
 							onclick={() => handleClick(format.value)}
-							type="button"
-							title={format.description}
-							style="animation-delay: {(i * 50) + (j * 15)}ms"
 						>
-							{#if multiSelect && isSelected(format.value)}
-								<span class="check-icon">
-									<Icon name="check" size={10} />
-								</span>
-							{/if}
-							<span class="format-name">{format.label}</span>
-							{#if format.description && !compact}
-								<span class="format-desc">{format.description}</span>
-							{/if}
+							{format.label}
 						</button>
 					{/each}
 				</div>
@@ -142,195 +93,55 @@
 </div>
 
 <style>
-	.format-selector {
-		width: 100%;
-	}
-
-	.format-selector.compact {
-		font-size: 0.9em;
-	}
-
-	.selector-title {
+	.selector {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-bottom: 1rem;
+		flex-direction: column;
+		gap: 12px;
 	}
 
-	.multi-hint {
-		margin-left: auto;
-		font-size: 0.7rem;
-		font-weight: 500;
-		color: var(--color-primary-light);
-		background: rgba(99, 102, 241, 0.1);
-		padding: 0.2rem 0.5rem;
-		border-radius: 1rem;
-	}
-
-	.no-formats {
-		color: var(--color-text-secondary);
-		font-size: 0.875rem;
+	.empty {
+		color: var(--c-text-3);
+		font-size: 13px;
 		text-align: center;
-		padding: 1rem;
-	}
-
-	.format-group {
-		margin-bottom: 1rem;
-		animation: fadeInUp 0.3s ease-out backwards;
-	}
-
-	@keyframes fadeInUp {
-		from {
-			opacity: 0;
-			transform: translateY(10px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	.format-group:last-child {
-		margin-bottom: 0;
-	}
-
-	.group-header {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		margin-bottom: 0.5rem;
-		padding-bottom: 0.35rem;
-		border-bottom: 1px solid var(--color-border);
+		padding: 12px;
 	}
 
 	.group-label {
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.group-count {
-		margin-left: auto;
-		font-size: 0.65rem;
+		font-size: 11px;
 		font-weight: 500;
-		color: var(--color-text-muted);
-		background: var(--color-bg-tertiary);
-		padding: 0.1rem 0.4rem;
-		border-radius: 1rem;
+		color: var(--c-text-3);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		margin-bottom: 8px;
 	}
 
-	.format-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
-		gap: 0.35rem;
-	}
-
-	.compact .format-grid {
-		grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
-		gap: 0.25rem;
-	}
-
-	.format-btn {
-		position: relative;
+	.grid {
 		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 0.5rem 0.3rem;
-		min-height: 48px;
-		border: 1px solid var(--color-border);
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.format {
+		padding: 6px 10px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--c-text-2);
+		background: var(--c-surface);
+		border: 1px solid var(--c-border-subtle);
 		border-radius: var(--radius-sm);
-		background: var(--color-bg-glass);
-		color: var(--color-text);
 		cursor: pointer;
-		transition: all 0.15s ease;
-		animation: fadeInUp 0.25s ease-out backwards;
+		transition: all 0.12s;
 	}
 
-	.compact .format-btn {
-		padding: 0.4rem 0.2rem;
-		min-height: 40px;
+	.format:hover {
+		color: var(--c-text);
+		border-color: var(--c-border);
+		background: var(--c-surface-raised);
 	}
 
-	.format-btn:hover {
-		border-color: var(--color-primary);
-		background: rgba(99, 102, 241, 0.1);
-		transform: translateY(-2px);
-	}
-
-	.format-btn:active {
-		transform: translateY(0) scale(0.98);
-	}
-
-	.format-btn.selected {
-		border-color: var(--color-primary);
-		background: var(--gradient-primary);
-		color: white;
-		box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-	}
-
-	.check-icon {
-		position: absolute;
-		top: 2px;
-		right: 2px;
-		width: 14px;
-		height: 14px;
-		background: white;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--color-primary);
-	}
-
-	.format-name {
-		font-size: 0.75rem;
-		font-weight: 600;
-		line-height: 1;
-	}
-
-	.compact .format-name {
-		font-size: 0.7rem;
-	}
-
-	.format-desc {
-		font-size: 0.5rem;
-		color: var(--color-text-secondary);
-		margin-top: 0.15rem;
-		text-align: center;
-		line-height: 1.2;
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.format-btn.selected .format-desc {
-		color: rgba(255, 255, 255, 0.8);
-	}
-
-	/* Mobile */
-	@media (max-width: 480px) {
-		.format-grid {
-			grid-template-columns: repeat(5, 1fr);
-		}
-
-		.format-btn {
-			padding: 0.4rem 0.2rem;
-			min-height: 42px;
-		}
-
-		.format-name {
-			font-size: 0.7rem;
-		}
-
-		.format-desc {
-			display: none;
-		}
+	.format.selected {
+		color: var(--c-accent);
+		border-color: var(--c-accent);
+		background: var(--c-accent-subtle);
 	}
 </style>
