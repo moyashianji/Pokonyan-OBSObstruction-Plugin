@@ -1,7 +1,8 @@
 name: Deploy
 on:
   push:
-    branches: [main, universal-converter-site]
+    branches: [main, claude/universal-converter-site-ACFEe]
+  workflow_dispatch:
 permissions:
   contents: read
   pages: write
