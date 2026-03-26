@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import FormatSelector from '$lib/components/FormatSelector.svelte';
 	import ConversionProgress from '$lib/components/ConversionProgress.svelte';
@@ -6,12 +7,14 @@
 		convertFile,
 		detectFileType,
 		formatFileSize,
+		preloadFFmpeg,
 		type ConversionState
 	} from '$lib/converter';
 
 	let files = $state<File[]>([]);
 	let selectedFormat = $state('');
 	let fileType = $state<'video' | 'audio' | 'image' | 'document' | null>(null);
+	let ffmpegStatus = $state<'loading' | 'ready' | 'unavailable' | 'idle'>('idle');
 
 	let conversionState = $state<ConversionState>({
 		status: 'idle',
@@ -22,6 +25,18 @@
 	});
 
 	let isConverting = $derived(conversionState.status === 'converting' || conversionState.status === 'loading');
+
+	onMount(() => {
+		// Preload FFmpeg in the background after page loads
+		if (typeof SharedArrayBuffer !== 'undefined') {
+			ffmpegStatus = 'loading';
+			preloadFFmpeg()
+				.then(() => { ffmpegStatus = 'ready'; })
+				.catch(() => { ffmpegStatus = 'unavailable'; });
+		} else {
+			ffmpegStatus = 'unavailable';
+		}
+	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
 		files = event.detail;
@@ -78,9 +93,6 @@
 			outputFileName: null
 		};
 	}
-
-	// FFmpeg will be loaded when conversion starts
-	// Removed preload to avoid potential errors on page load
 </script>
 
 <svelte:head>
