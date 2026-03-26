@@ -4,7 +4,6 @@
 	import ConversionProgress from '$lib/components/ConversionProgress.svelte';
 	import {
 		convertFile,
-		loadFFmpeg,
 		detectFileType,
 		formatFileSize,
 		type ConversionState
@@ -193,7 +192,7 @@
 				</svg>
 			</div>
 			<h3>超高速変換</h3>
-			<p>WebAssembly技術により、サーバーを経由せず即座に変換</p>
+			<p>ブラウザのネイティブAPIで、サーバーを経由せず即座に変換</p>
 		</div>
 		<div class="feature">
 			<div class="feature-icon">

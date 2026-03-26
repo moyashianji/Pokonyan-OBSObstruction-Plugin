@@ -1,9 +1,14 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+/**
+ * Universal File Converter
+ * Uses native browser APIs for maximum compatibility and speed
+ * No external dependencies that require special headers
+ */
 
-let ffmpeg: FFmpeg | null = null;
-let loaded = false;
+import { convertImage, isImageFile, getSupportedImageFormats, type ImageFormat } from './image-converter';
+import { convertAudio, isAudioFile, getSupportedAudioFormats, type AudioFormat } from './audio-converter';
+import { convertVideo, isVideoFile, getSupportedVideoFormats, type VideoFormat } from './video-converter';
 
+export type FileType = 'image' | 'audio' | 'video' | 'document' | null;
 export type ConversionStatus = 'idle' | 'loading' | 'converting' | 'complete' | 'error';
 
 export interface ConversionState {
@@ -16,62 +21,31 @@ export interface ConversionState {
 
 export type ProgressCallback = (state: Partial<ConversionState>) => void;
 
-export function detectFileType(file: File): 'video' | 'audio' | 'image' | 'document' | null {
-	const mimeType = file.type.toLowerCase();
-	const extension = file.name.split('.').pop()?.toLowerCase() || '';
+export function detectFileType(file: File): FileType {
+	if (isImageFile(file)) return 'image';
+	if (isAudioFile(file)) return 'audio';
+	if (isVideoFile(file)) return 'video';
 
-	// Video
-	if (mimeType.startsWith('video/') || ['mp4', 'webm', 'avi', 'mov', 'mkv', 'flv', 'wmv'].includes(extension)) {
-		return 'video';
-	}
-
-	// Audio
-	if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma'].includes(extension)) {
-		return 'audio';
-	}
-
-	// Image
-	if (mimeType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'svg'].includes(extension)) {
-		return 'image';
-	}
-
-	// Document
-	if (['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt'].includes(extension)) {
+	const ext = file.name.split('.').pop()?.toLowerCase() || '';
+	if (['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext)) {
 		return 'document';
 	}
 
 	return null;
 }
 
-export async function loadFFmpeg(onProgress?: ProgressCallback): Promise<void> {
-	if (loaded && ffmpeg) return;
-
-	onProgress?.({ status: 'loading', message: 'FFmpegをダウンロード中...', progress: 0 });
-
-	ffmpeg = new FFmpeg();
-
-	ffmpeg.on('log', ({ message }) => {
-		console.log('[FFmpeg]', message);
-	});
-
-	ffmpeg.on('progress', ({ progress, time }) => {
-		const percent = Math.min(Math.round(progress * 100), 100);
-		onProgress?.({ progress: percent, message: `変換中... ${percent}%` });
-	});
-
-	const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-
-	try {
-		await ffmpeg.load({
-			coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-			wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-		});
-		loaded = true;
-		onProgress?.({ status: 'idle', message: 'FFmpeg準備完了', progress: 100 });
-	} catch (error) {
-		console.error('FFmpeg load error:', error);
-		onProgress?.({ status: 'error', message: 'FFmpegの読み込みに失敗しました' });
-		throw error;
+export function getOutputFormats(fileType: FileType): string[] {
+	switch (fileType) {
+		case 'image':
+			return getSupportedImageFormats();
+		case 'audio':
+			return getSupportedAudioFormats();
+		case 'video':
+			return [...getSupportedVideoFormats(), 'mp3', 'wav', 'png', 'jpg'];
+		case 'document':
+			return ['txt', 'pdf'];
+		default:
+			return [];
 	}
 }
 
@@ -80,148 +54,100 @@ export async function convertFile(
 	outputFormat: string,
 	onProgress?: ProgressCallback
 ): Promise<{ url: string; fileName: string }> {
-	if (!ffmpeg || !loaded) {
-		await loadFFmpeg(onProgress);
-	}
+	const fileType = detectFileType(file);
 
-	onProgress?.({ status: 'converting', progress: 0, message: 'ファイルを読み込み中...' });
-
-	const inputFileName = `input_${Date.now()}.${file.name.split('.').pop()}`;
-	const outputFileName = `output_${Date.now()}.${outputFormat}`;
-	const baseName = file.name.replace(/\.[^/.]+$/, '');
-	const downloadFileName = `${baseName}.${outputFormat}`;
+	onProgress?.({
+		status: 'converting',
+		progress: 0,
+		message: '変換を開始...'
+	});
 
 	try {
-		// Write input file to FFmpeg virtual filesystem
-		await ffmpeg!.writeFile(inputFileName, await fetchFile(file));
+		let result: { blob: Blob; fileName: string };
 
-		onProgress?.({ progress: 10, message: '変換を開始...' });
+		switch (fileType) {
+			case 'image':
+				onProgress?.({ progress: 10, message: '画像を処理中...' });
+				result = await convertImage(file, outputFormat as ImageFormat);
+				break;
 
-		// Build FFmpeg command based on output format
-		const args = buildFFmpegArgs(inputFileName, outputFileName, outputFormat, file);
+			case 'audio':
+				result = await convertAudio(
+					file,
+					outputFormat as AudioFormat,
+					{},
+					(progress) => {
+						onProgress?.({ progress, message: `音声を変換中... ${progress}%` });
+					}
+				);
+				break;
 
-		// Execute conversion
-		await ffmpeg!.exec(args);
+			case 'video':
+				// Determine output type based on format
+				let outputType: 'video' | 'audio' | 'image' = 'video';
+				if (['mp3', 'wav', 'ogg', 'webm-audio'].includes(outputFormat)) {
+					outputType = 'audio';
+				} else if (['png', 'jpg', 'jpeg'].includes(outputFormat)) {
+					outputType = 'image';
+				}
 
-		onProgress?.({ progress: 90, message: '出力ファイルを準備中...' });
+				result = await convertVideo(
+					file,
+					{
+						format: outputFormat as VideoFormat,
+						outputType
+					},
+					(progress) => {
+						onProgress?.({ progress, message: `動画を変換中... ${progress}%` });
+					}
+				);
+				break;
 
-		// Read output file
-		const data = await ffmpeg!.readFile(outputFileName);
+			case 'document':
+				result = await convertDocument(file, outputFormat);
+				break;
 
-		// Create blob URL
-		const mimeType = getMimeType(outputFormat);
-		const blob = new Blob([data], { type: mimeType });
-		const url = URL.createObjectURL(blob);
+			default:
+				throw new Error('サポートされていないファイル形式です');
+		}
 
-		// Cleanup
-		await ffmpeg!.deleteFile(inputFileName);
-		await ffmpeg!.deleteFile(outputFileName);
+		const url = URL.createObjectURL(result.blob);
 
 		onProgress?.({
 			status: 'complete',
 			progress: 100,
 			message: '変換完了!',
 			outputUrl: url,
-			outputFileName: downloadFileName
+			outputFileName: result.fileName
 		});
 
-		return { url, fileName: downloadFileName };
+		return { url, fileName: result.fileName };
 	} catch (error) {
-		console.error('Conversion error:', error);
+		const message = error instanceof Error ? error.message : '変換中にエラーが発生しました';
 		onProgress?.({
 			status: 'error',
-			message: `変換エラー: ${error instanceof Error ? error.message : '不明なエラー'}`
+			progress: 0,
+			message
 		});
 		throw error;
 	}
 }
 
-function buildFFmpegArgs(
-	input: string,
-	output: string,
-	format: string,
-	file: File
-): string[] {
-	const fileType = detectFileType(file);
-	const baseArgs = ['-i', input];
+async function convertDocument(
+	file: File,
+	outputFormat: string
+): Promise<{ blob: Blob; fileName: string }> {
+	const baseName = file.name.replace(/\.[^/.]+$/, '');
 
-	switch (format) {
-		// Video formats
-		case 'mp4':
-			return [...baseArgs, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', output];
-		case 'webm':
-			return [...baseArgs, '-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-c:a', 'libopus', output];
-		case 'avi':
-			return [...baseArgs, '-c:v', 'mpeg4', '-c:a', 'mp3', output];
-		case 'mov':
-			return [...baseArgs, '-c:v', 'libx264', '-c:a', 'aac', output];
-		case 'mkv':
-			return [...baseArgs, '-c:v', 'libx264', '-c:a', 'aac', output];
-		case 'gif':
-			return [...baseArgs, '-vf', 'fps=15,scale=480:-1:flags=lanczos', '-loop', '0', output];
-
-		// Audio formats
-		case 'mp3':
-			return [...baseArgs, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', output];
-		case 'wav':
-			return [...baseArgs, '-vn', '-c:a', 'pcm_s16le', output];
-		case 'ogg':
-			return [...baseArgs, '-vn', '-c:a', 'libvorbis', '-q:a', '4', output];
-		case 'aac':
-			return [...baseArgs, '-vn', '-c:a', 'aac', '-b:a', '192k', output];
-		case 'flac':
-			return [...baseArgs, '-vn', '-c:a', 'flac', output];
-		case 'm4a':
-			return [...baseArgs, '-vn', '-c:a', 'aac', '-b:a', '256k', output];
-
-		// Image formats
-		case 'png':
-			return fileType === 'video'
-				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', output]
-				: [...baseArgs, output];
-		case 'jpg':
-		case 'jpeg':
-			return fileType === 'video'
-				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', '-q:v', '2', output]
-				: [...baseArgs, '-q:v', '2', output];
-		case 'webp':
-			return fileType === 'video'
-				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', '-quality', '80', output]
-				: [...baseArgs, '-quality', '80', output];
-		case 'bmp':
-			return fileType === 'video'
-				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', output]
-				: [...baseArgs, output];
-
-		default:
-			return [...baseArgs, output];
+	if (outputFormat === 'txt') {
+		// Convert to plain text
+		const text = await file.text();
+		const blob = new Blob([text], { type: 'text/plain' });
+		return { blob, fileName: `${baseName}.txt` };
 	}
-}
 
-function getMimeType(format: string): string {
-	const mimeTypes: Record<string, string> = {
-		// Video
-		mp4: 'video/mp4',
-		webm: 'video/webm',
-		avi: 'video/x-msvideo',
-		mov: 'video/quicktime',
-		mkv: 'video/x-matroska',
-		gif: 'image/gif',
-		// Audio
-		mp3: 'audio/mpeg',
-		wav: 'audio/wav',
-		ogg: 'audio/ogg',
-		aac: 'audio/aac',
-		flac: 'audio/flac',
-		m4a: 'audio/mp4',
-		// Image
-		png: 'image/png',
-		jpg: 'image/jpeg',
-		jpeg: 'image/jpeg',
-		webp: 'image/webp',
-		bmp: 'image/bmp',
-	};
-	return mimeTypes[format] || 'application/octet-stream';
+	// For other document formats, we can't convert without a server
+	throw new Error('このドキュメント形式の変換はサポートされていません');
 }
 
 export function formatFileSize(bytes: number): string {
@@ -230,4 +156,10 @@ export function formatFileSize(bytes: number): string {
 	const sizes = ['B', 'KB', 'MB', 'GB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
 	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Export for backward compatibility
+export async function loadFFmpeg(): Promise<void> {
+	// No longer needed - using native APIs
+	return Promise.resolve();
 }
