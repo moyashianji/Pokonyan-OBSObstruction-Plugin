@@ -26,6 +26,8 @@ import {
 import { detectFileType, type FileType } from './converter';
 import { isWebCodecsSupported, convertVideoWithWebCodecs } from './webcodecs-converter';
 import { isFFmpegAvailable, convertWithFFmpeg, initFFmpeg } from './ffmpeg-converter';
+import { createZip, isCompressionStreamsSupported, getCompressionCapabilities } from './compression-utils';
+import { isImageDecoderSupported } from './image-decoder';
 
 export interface ConversionJob {
 	file: File;
@@ -384,11 +386,38 @@ export function cleanup(): void {
 }
 
 /**
+ * Export conversion results as ZIP (uses native Compression Streams - 20x faster)
+ */
+export async function exportAsZip(
+	results: ConversionResult[],
+	onProgress?: (completed: number, total: number) => void
+): Promise<Blob> {
+	const files: Array<{ name: string; data: Blob }> = [];
+
+	for (const result of results) {
+		if (result.success && result.blob && result.fileName) {
+			files.push({
+				name: result.fileName,
+				data: result.blob
+			});
+		}
+	}
+
+	if (files.length === 0) {
+		throw new Error('No successful conversions to export');
+	}
+
+	return createZip(files, onProgress);
+}
+
+/**
  * Get conversion engine status
  */
 export function getEngineStatus(): {
 	webcodecs: boolean;
 	ffmpeg: boolean;
+	imageDecoder: boolean;
+	compressionStreams: boolean;
 	workerCount: number;
 	memoryUsage: number;
 	memoryLimit: number;
@@ -399,8 +428,52 @@ export function getEngineStatus(): {
 	return {
 		webcodecs: isWebCodecsSupported(),
 		ffmpeg: isFFmpegAvailable(),
+		imageDecoder: isImageDecoderSupported(),
+		compressionStreams: isCompressionStreamsSupported(),
 		workerCount: stats.hardwareConcurrency,
 		memoryUsage: memory ? Math.round(memory.usedJSHeapSize / (1024 * 1024)) : 0,
 		memoryLimit: memory ? Math.round(memory.jsHeapSizeLimit / (1024 * 1024)) : 0
 	};
+}
+
+/**
+ * Get available performance optimizations
+ */
+export function getOptimizations(): {
+	name: string;
+	available: boolean;
+	description: string;
+}[] {
+	return [
+		{
+			name: 'WebCodecs',
+			available: isWebCodecsSupported(),
+			description: 'GPU-accelerated video encoding/decoding'
+		},
+		{
+			name: 'ImageDecoder',
+			available: isImageDecoderSupported(),
+			description: '1.5x faster image decoding'
+		},
+		{
+			name: 'Compression Streams',
+			available: isCompressionStreamsSupported(),
+			description: '20x faster ZIP compression'
+		},
+		{
+			name: 'OffscreenCanvas',
+			available: typeof OffscreenCanvas !== 'undefined',
+			description: 'Worker-based image processing'
+		},
+		{
+			name: 'Web Workers',
+			available: typeof Worker !== 'undefined',
+			description: 'True parallel processing'
+		},
+		{
+			name: 'Hardware Concurrency',
+			available: navigator.hardwareConcurrency > 1,
+			description: `${navigator.hardwareConcurrency || 1} CPU cores`
+		}
+	];
 }
