@@ -9,14 +9,15 @@
 		formatFileSize,
 		preloadFFmpeg,
 		getSystemCapabilities,
-		type ConversionState
+		type ConversionState,
+		type FileType
 	} from '$lib/converter';
 
 	let files = $state<File[]>([]);
 	let selectedFormat = $state('');
-	let fileType = $state<'video' | 'audio' | 'image' | 'document' | null>(null);
-
+	let fileType = $state<FileType>(null);
 	let capabilities = $state({ webcodecs: false, ffmpeg: false, sharedArrayBuffer: false });
+	let mounted = $state(false);
 
 	let conversionState = $state<ConversionState>({
 		status: 'idle',
@@ -28,11 +29,18 @@
 
 	let isConverting = $derived(conversionState.status === 'converting' || conversionState.status === 'loading');
 
+	// File type icons
+	const fileTypeIcons: Record<string, string> = {
+		image: '🖼️',
+		audio: '🎵',
+		video: '🎬',
+		document: '📄'
+	};
+
 	onMount(() => {
-		// Check system capabilities
+		mounted = true;
 		capabilities = getSystemCapabilities();
 
-		// Preload FFmpeg in the background (only if SharedArrayBuffer available)
 		if (capabilities.sharedArrayBuffer) {
 			preloadFFmpeg().catch(console.warn);
 		}
@@ -75,7 +83,9 @@
 		const a = document.createElement('a');
 		a.href = conversionState.outputUrl;
 		a.download = conversionState.outputFileName;
+		document.body.appendChild(a);
 		a.click();
+		document.body.removeChild(a);
 	}
 
 	function reset() {
@@ -96,276 +106,468 @@
 </script>
 
 <svelte:head>
-	<title>Universal Converter - 高速ファイル変換</title>
-	<meta name="description" content="ブラウザで完結する高速ファイル変換ツール。動画、音声、画像を瞬時に変換。" />
+	<title>Universal Converter - 究極のファイル変換</title>
+	<meta name="description" content="ブラウザで完結する究極のファイル変換ツール。GPU高速変換、50+形式対応、完全プライベート。" />
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </svelte:head>
 
-<main class="container">
+<main class="container" class:mounted>
+	<!-- Hero Header -->
 	<header class="header">
+		<div class="logo">
+			<span class="logo-icon">⚡</span>
+		</div>
 		<h1 class="title">
 			<span class="gradient-text">Universal</span> Converter
 		</h1>
 		<p class="subtitle">
-			ブラウザで完結する超高速ファイル変換<br />
-			<span class="highlight">サーバー不要・完全プライベート</span>
+			GPU高速変換 · 50+形式対応 · 完全プライベート
 		</p>
+
+		<!-- Capability Badges -->
+		<div class="badges">
+			<span class="badge" class:active={capabilities.webcodecs}>
+				<span class="badge-icon">⚡</span>
+				GPU高速
+			</span>
+			<span class="badge active">
+				<span class="badge-icon">🔒</span>
+				プライベート
+			</span>
+			<span class="badge" class:active={capabilities.ffmpeg}>
+				<span class="badge-icon">🎬</span>
+				FFmpeg
+			</span>
+		</div>
 	</header>
 
-	<div class="converter-card">
+	<!-- Main Card -->
+	<div class="main-card glass">
 		{#if files.length === 0}
+			<!-- File Upload State -->
 			<FileDropzone on:files={handleFiles} disabled={isConverting} />
-		{:else}
-			<div class="file-info">
-				<div class="file-preview">
-					<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-						<polyline points="14 2 14 8 20 8" />
+		{:else if conversionState.status === 'complete'}
+			<!-- Success State -->
+			<div class="success-state animate-fadeInScale">
+				<div class="success-icon">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+						<polyline points="20 6 9 17 4 12" />
 					</svg>
-					<div class="file-details">
-						<p class="file-name">{files[0].name}</p>
-						<p class="file-size">{formatFileSize(files[0].size)}</p>
+				</div>
+				<h2 class="success-title">変換完了!</h2>
+				<p class="success-filename">{conversionState.outputFileName}</p>
+
+				<div class="success-actions">
+					<button class="btn btn-primary btn-lg" onclick={downloadFile}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+							<polyline points="7 10 12 15 17 10" />
+							<line x1="12" y1="15" x2="12" y2="3" />
+						</svg>
+						ダウンロード
+					</button>
+					<button class="btn btn-secondary" onclick={reset}>
+						別のファイルを変換
+					</button>
+				</div>
+			</div>
+		{:else}
+			<!-- Conversion Flow -->
+			<div class="conversion-flow">
+				<!-- File Info -->
+				<div class="file-card animate-fadeInUp">
+					<div class="file-icon-wrapper">
+						<span class="file-type-icon">{fileTypeIcons[fileType || 'document']}</span>
 					</div>
-					<button class="remove-btn" onclick={reset} aria-label="ファイルを削除">
+					<div class="file-info">
+						<p class="file-name">{files[0].name}</p>
+						<p class="file-meta">
+							<span>{formatFileSize(files[0].size)}</span>
+							<span class="separator">·</span>
+							<span class="file-type-label">{fileType?.toUpperCase()}</span>
+						</p>
+					</div>
+					<button class="btn-icon" onclick={reset} aria-label="削除" disabled={isConverting}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<line x1="18" y1="6" x2="6" y2="18" />
 							<line x1="6" y1="6" x2="18" y2="18" />
 						</svg>
 					</button>
 				</div>
-			</div>
 
-			{#if conversionState.status !== 'complete'}
-				<div class="format-section">
-					<FormatSelector
-						{selectedFormat}
-						{fileType}
-						on:select={handleFormatSelect}
-					/>
+				<!-- Arrow -->
+				<div class="flow-arrow">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<line x1="12" y1="5" x2="12" y2="19" />
+						<polyline points="19 12 12 19 5 12" />
+					</svg>
 				</div>
-			{/if}
 
-			{#if conversionState.status !== 'idle' && conversionState.status !== 'complete'}
-				<div class="progress-section">
-					<ConversionProgress
-						progress={conversionState.progress}
-						status={conversionState.status}
-						message={conversionState.message}
-					/>
-				</div>
-			{/if}
-
-			{#if conversionState.status === 'complete'}
-				<div class="success-section">
-					<div class="success-icon">
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polyline points="20 6 9 17 4 12" />
-						</svg>
+				<!-- Format Selection or Progress -->
+				{#if isConverting}
+					<div class="progress-card animate-fadeInScale">
+						<ConversionProgress
+							progress={conversionState.progress}
+							status={conversionState.status}
+							message={conversionState.message}
+						/>
 					</div>
-					<p class="success-text">変換が完了しました!</p>
-					<div class="action-buttons">
-						<button class="btn btn-primary" onclick={downloadFile}>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-								<polyline points="7 10 12 15 17 10" />
-								<line x1="12" y1="15" x2="12" y2="3" />
-							</svg>
-							ダウンロード
-						</button>
-						<button class="btn btn-secondary" onclick={reset}>
-							別のファイルを変換
-						</button>
+				{:else}
+					<div class="format-card animate-fadeInUp" style="animation-delay: 100ms">
+						<FormatSelector
+							{selectedFormat}
+							{fileType}
+							on:select={handleFormatSelect}
+						/>
 					</div>
-				</div>
-			{:else}
-				<div class="convert-section">
+
+					<!-- Convert Button -->
 					<button
 						class="btn btn-convert"
-						disabled={!selectedFormat || isConverting}
+						class:ready={selectedFormat}
+						disabled={!selectedFormat}
 						onclick={startConversion}
 					>
-						{#if isConverting}
-							<span class="spinner"></span>
-							変換中...
-						{:else}
-							変換を開始
-						{/if}
+						<span class="btn-content">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<polygon points="5 3 19 12 5 21 5 3" />
+							</svg>
+							{selectedFormat ? `${selectedFormat.toUpperCase()} に変換` : '形式を選択してください'}
+						</span>
 					</button>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		{/if}
 	</div>
 
+	<!-- Features -->
 	<section class="features">
-		<div class="feature">
-			<div class="feature-icon gpu">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-				</svg>
-			</div>
+		<div class="feature glass">
+			<div class="feature-icon gpu">⚡</div>
 			<h3>GPU高速変換</h3>
-			<p>WebCodecs APIでハードウェアアクセラレーション</p>
-			<span class="status-badge" class:active={capabilities.webcodecs}>
-				{capabilities.webcodecs ? '有効' : '未対応'}
-			</span>
+			<p>WebCodecs APIでハードウェアアクセラレーション。従来の10-100倍高速。</p>
 		</div>
-		<div class="feature">
-			<div class="feature-icon">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-					<path d="M7 11V7a5 5 0 0 1 10 0v4" />
-				</svg>
-			</div>
+		<div class="feature glass">
+			<div class="feature-icon">🔒</div>
 			<h3>完全プライベート</h3>
-			<p>ファイルはブラウザ内で処理。サーバー送信なし</p>
-			<span class="status-badge active">常時有効</span>
+			<p>ファイルはブラウザ内で処理。サーバーに一切送信されません。</p>
 		</div>
-		<div class="feature">
-			<div class="feature-icon">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M12 2L2 7l10 5 10-5-10-5z" />
-					<path d="M2 17l10 5 10-5" />
-					<path d="M2 12l10 5 10-5" />
-				</svg>
-			</div>
+		<div class="feature glass">
+			<div class="feature-icon">🎬</div>
 			<h3>50+形式対応</h3>
-			<p>FFmpegで全フォーマット変換可能</p>
-			<span class="status-badge" class:active={capabilities.ffmpeg}>
-				{capabilities.ffmpeg ? '有効' : 'ネイティブのみ'}
-			</span>
+			<p>動画、音声、画像あらゆる形式に対応。FFmpegの力をブラウザで。</p>
 		</div>
 	</section>
+
+	<!-- Footer -->
+	<footer class="footer">
+		<p>Powered by WebCodecs · Canvas API · FFmpeg.wasm</p>
+	</footer>
 </main>
 
 <style>
+	/* Container */
 	.container {
-		max-width: 900px;
+		max-width: 800px;
 		margin: 0 auto;
 		padding: 2rem 1rem;
+		opacity: 0;
+		transition: opacity 0.5s ease;
 	}
 
+	.container.mounted {
+		opacity: 1;
+	}
+
+	/* Header */
 	.header {
 		text-align: center;
-		margin-bottom: 3rem;
+		margin-bottom: 2.5rem;
+	}
+
+	.logo {
+		margin-bottom: 1rem;
+	}
+
+	.logo-icon {
+		font-size: 3rem;
+		display: inline-block;
+		animation: float 3s ease-in-out infinite;
 	}
 
 	.title {
 		font-size: 2.5rem;
 		font-weight: 700;
-		margin-bottom: 1rem;
+		margin-bottom: 0.5rem;
+		letter-spacing: -0.02em;
 	}
 
 	.gradient-text {
-		background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+		background: var(--gradient-primary);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
 	}
 
 	.subtitle {
-		font-size: 1.1rem;
+		font-size: 1rem;
 		color: var(--color-text-secondary);
-		line-height: 1.6;
+		margin-bottom: 1rem;
 	}
 
-	.subtitle .highlight {
-		color: var(--color-accent);
+	/* Badges */
+	.badges {
+		display: flex;
+		justify-content: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.35rem 0.75rem;
+		font-size: 0.75rem;
 		font-weight: 500;
-	}
-
-	.converter-card {
-		background: var(--color-bg-secondary);
-		border-radius: 1rem;
-		padding: 2rem;
+		border-radius: 2rem;
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-muted);
 		border: 1px solid var(--color-border);
-		margin-bottom: 3rem;
+		transition: all var(--transition-fast);
 	}
 
-	.file-info {
-		margin-bottom: 1.5rem;
+	.badge.active {
+		background: rgba(16, 185, 129, 0.15);
+		color: var(--color-success);
+		border-color: rgba(16, 185, 129, 0.3);
 	}
 
-	.file-preview {
+	.badge-icon {
+		font-size: 0.875rem;
+	}
+
+	/* Main Card */
+	.main-card {
+		border-radius: var(--radius-xl);
+		padding: 2rem;
+		margin-bottom: 2.5rem;
+		box-shadow: var(--shadow-lg);
+	}
+
+	/* Conversion Flow */
+	.conversion-flow {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.file-card {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 		padding: 1rem;
 		background: var(--color-bg-tertiary);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
 	}
 
-	.file-icon {
-		width: 2.5rem;
-		height: 2.5rem;
-		color: var(--color-primary);
-		flex-shrink: 0;
+	.file-icon-wrapper {
+		width: 3rem;
+		height: 3rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--gradient-primary);
+		border-radius: var(--radius-md);
+		font-size: 1.5rem;
 	}
 
-	.file-details {
+	.file-info {
 		flex: 1;
 		min-width: 0;
 	}
 
 	.file-name {
-		font-weight: 500;
-		color: var(--color-text);
+		font-weight: 600;
+		font-size: 0.95rem;
+		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.file-size {
-		font-size: 0.875rem;
+	.file-meta {
+		font-size: 0.8rem;
 		color: var(--color-text-secondary);
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
-	.remove-btn {
-		width: 2rem;
-		height: 2rem;
-		padding: 0.25rem;
-		border: none;
+	.separator {
+		color: var(--color-text-muted);
+	}
+
+	.file-type-label {
+		color: var(--color-primary-light);
+		font-weight: 500;
+	}
+
+	.btn-icon {
+		width: 2.25rem;
+		height: 2.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: transparent;
+		border: none;
+		border-radius: var(--radius-sm);
 		color: var(--color-text-secondary);
 		cursor: pointer;
-		border-radius: 0.25rem;
-		transition: all 0.2s ease;
+		transition: all var(--transition-fast);
 	}
 
-	.remove-btn:hover {
+	.btn-icon:hover:not(:disabled) {
 		color: var(--color-error);
 		background: rgba(239, 68, 68, 0.1);
 	}
 
-	.remove-btn svg {
-		width: 100%;
-		height: 100%;
+	.btn-icon:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
-	.format-section {
-		margin-bottom: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
+	.btn-icon svg {
+		width: 1.25rem;
+		height: 1.25rem;
 	}
 
-	.progress-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.convert-section {
+	/* Flow Arrow */
+	.flow-arrow {
 		display: flex;
 		justify-content: center;
+		color: var(--color-text-muted);
 	}
 
+	.flow-arrow svg {
+		width: 1.5rem;
+		height: 1.5rem;
+	}
+
+	/* Format Card */
+	.format-card {
+		padding: 0.5rem 0;
+	}
+
+	/* Progress Card */
+	.progress-card {
+		padding: 1.5rem;
+		background: var(--color-bg-tertiary);
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+	}
+
+	/* Convert Button */
+	.btn-convert {
+		width: 100%;
+		padding: 1rem 1.5rem;
+		font-size: 1rem;
+		font-weight: 600;
+		border: none;
+		border-radius: var(--radius-md);
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-muted);
+		cursor: not-allowed;
+		transition: all var(--transition-normal);
+	}
+
+	.btn-convert.ready {
+		background: var(--gradient-primary);
+		color: white;
+		cursor: pointer;
+		box-shadow: var(--shadow-glow);
+	}
+
+	.btn-convert.ready:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+	}
+
+	.btn-convert.ready:active {
+		transform: translateY(0);
+	}
+
+	.btn-content {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
+	.btn-content svg {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	/* Success State */
+	.success-state {
+		text-align: center;
+		padding: 2rem 0;
+	}
+
+	.success-icon {
+		width: 5rem;
+		height: 5rem;
+		margin: 0 auto 1.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: linear-gradient(135deg, var(--color-success), #059669);
+		border-radius: 50%;
+		color: white;
+		box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+	}
+
+	.success-icon svg {
+		width: 2.5rem;
+		height: 2.5rem;
+	}
+
+	.success-title {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin-bottom: 0.5rem;
+	}
+
+	.success-filename {
+		color: var(--color-text-secondary);
+		font-size: 0.9rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.success-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		max-width: 300px;
+		margin: 0 auto;
+	}
+
+	/* Buttons */
 	.btn {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		gap: 0.5rem;
 		padding: 0.75rem 1.5rem;
-		border-radius: 0.5rem;
-		font-size: 1rem;
+		font-size: 0.95rem;
 		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.2s ease;
 		border: none;
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		transition: all var(--transition-fast);
 	}
 
 	.btn svg {
@@ -373,30 +575,19 @@
 		height: 1.25rem;
 	}
 
-	.btn-convert {
-		background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-		color: white;
-		padding: 1rem 2rem;
-		font-size: 1.1rem;
-	}
-
-	.btn-convert:hover:not(:disabled) {
-		transform: translateY(-2px);
-		box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
-	}
-
-	.btn-convert:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.btn-primary {
-		background: var(--color-success);
+		background: var(--gradient-primary);
 		color: white;
 	}
 
 	.btn-primary:hover {
-		background: #059669;
+		transform: translateY(-2px);
+		box-shadow: var(--shadow-glow);
+	}
+
+	.btn-lg {
+		padding: 1rem 2rem;
+		font-size: 1rem;
 	}
 
 	.btn-secondary {
@@ -407,129 +598,93 @@
 
 	.btn-secondary:hover {
 		border-color: var(--color-primary);
+		background: rgba(99, 102, 241, 0.1);
 	}
 
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid rgba(255, 255, 255, 0.3);
-		border-top-color: white;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	.success-section {
-		text-align: center;
-		padding: 2rem 0;
-	}
-
-	.success-icon {
-		width: 4rem;
-		height: 4rem;
-		margin: 0 auto 1rem;
-		background: var(--color-success);
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.success-icon svg {
-		width: 2rem;
-		height: 2rem;
-		color: white;
-	}
-
-	.success-text {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-bottom: 1.5rem;
-	}
-
-	.action-buttons {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-		flex-wrap: wrap;
-	}
-
+	/* Features */
 	.features {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-		gap: 2rem;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 1rem;
+		margin-bottom: 2rem;
 	}
 
 	.feature {
-		text-align: center;
 		padding: 1.5rem;
+		border-radius: var(--radius-lg);
+		text-align: center;
+		transition: transform var(--transition-fast);
+	}
+
+	.feature:hover {
+		transform: translateY(-4px);
 	}
 
 	.feature-icon {
-		width: 3rem;
-		height: 3rem;
-		margin: 0 auto 1rem;
-		color: var(--color-primary);
-	}
-
-	.feature-icon svg {
-		width: 100%;
-		height: 100%;
-	}
-
-	.feature h3 {
-		font-size: 1.1rem;
-		font-weight: 600;
-		margin-bottom: 0.5rem;
-		color: var(--color-text);
-	}
-
-	.feature p {
-		font-size: 0.875rem;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
-		margin-bottom: 0.5rem;
+		font-size: 2rem;
+		margin-bottom: 0.75rem;
+		display: block;
 	}
 
 	.feature-icon.gpu {
-		color: var(--color-accent);
+		animation: glow 2s ease-in-out infinite;
 	}
 
-	.status-badge {
-		display: inline-block;
-		padding: 0.2rem 0.5rem;
-		font-size: 0.7rem;
+	.feature h3 {
+		font-size: 1rem;
 		font-weight: 600;
-		border-radius: 0.25rem;
-		background: var(--color-bg-tertiary);
+		margin-bottom: 0.5rem;
+	}
+
+	.feature p {
+		font-size: 0.8rem;
 		color: var(--color-text-secondary);
+		line-height: 1.5;
 	}
 
-	.status-badge.active {
-		background: rgba(16, 185, 129, 0.2);
-		color: var(--color-success);
+	/* Footer */
+	.footer {
+		text-align: center;
+		padding: 1rem;
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
 	}
 
+	/* Mobile */
 	@media (max-width: 640px) {
+		.container {
+			padding: 1.5rem 1rem;
+		}
+
 		.title {
 			font-size: 2rem;
 		}
 
-		.converter-card {
+		.main-card {
 			padding: 1.5rem;
 		}
 
-		.action-buttons {
-			flex-direction: column;
+		.badges {
+			gap: 0.35rem;
 		}
 
-		.btn {
-			width: 100%;
-			justify-content: center;
+		.badge {
+			padding: 0.25rem 0.5rem;
+			font-size: 0.7rem;
+		}
+
+		.file-card {
+			padding: 0.75rem;
+		}
+
+		.file-icon-wrapper {
+			width: 2.5rem;
+			height: 2.5rem;
+			font-size: 1.25rem;
+		}
+
+		.file-name {
+			font-size: 0.85rem;
 		}
 	}
 </style>

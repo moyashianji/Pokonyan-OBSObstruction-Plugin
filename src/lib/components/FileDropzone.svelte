@@ -9,7 +9,31 @@
 
 	let { accept = '*', multiple = true, disabled = false }: Props = $props();
 
+	let isDragging = $state(false);
+	let isHovering = $state(false);
+
 	const dispatch = createEventDispatcher<{ files: File[] }>();
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		if (!disabled) isDragging = true;
+	}
+
+	function handleDragLeave(e: DragEvent) {
+		e.preventDefault();
+		isDragging = false;
+	}
+
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		isDragging = false;
+		if (disabled || !e.dataTransfer) return;
+
+		const files = Array.from(e.dataTransfer.files);
+		if (files.length > 0) {
+			dispatch('files', files);
+		}
+	}
 
 	function handleChange(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -20,59 +44,239 @@
 	}
 </script>
 
-<div class="upload-container">
-	<p class="upload-text">ファイルを選択してください</p>
+<div
+	class="dropzone-wrapper"
+	class:dragging={isDragging}
+	class:hovering={isHovering}
+	class:disabled={disabled}
+	ondragover={handleDragOver}
+	ondragleave={handleDragLeave}
+	ondrop={handleDrop}
+	onmouseenter={() => !disabled && (isHovering = true)}
+	onmouseleave={() => isHovering = false}
+>
 	<input
 		type="file"
+		id="file-upload-input"
 		accept={accept}
 		multiple={multiple}
 		onchange={handleChange}
 		disabled={disabled}
 		class="file-input"
 	/>
-	<p class="upload-hint">動画・音声・画像・ドキュメントに対応</p>
+
+	<label for="file-upload-input" class="dropzone-label">
+		<div class="dropzone-content">
+			<!-- Animated Icon -->
+			<div class="icon-wrapper">
+				<div class="icon-bg"></div>
+				<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+					<polyline points="17 8 12 3 7 8" />
+					<line x1="12" y1="3" x2="12" y2="15" />
+				</svg>
+			</div>
+
+			<!-- Text -->
+			<div class="dropzone-text">
+				<p class="primary-text">
+					ファイルをドロップ
+				</p>
+				<p class="secondary-text">
+					または<span class="highlight">クリックして選択</span>
+				</p>
+			</div>
+
+			<!-- Supported formats -->
+			<div class="format-chips">
+				<span class="chip">🎬 動画</span>
+				<span class="chip">🎵 音声</span>
+				<span class="chip">🖼️ 画像</span>
+			</div>
+		</div>
+	</label>
 </div>
 
 <style>
-	.upload-container {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 1.5rem;
-		padding: 2rem;
-		border: 2px dashed var(--color-border, #475569);
-		border-radius: 1rem;
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.upload-text {
-		font-size: 1.1rem;
-		color: var(--color-text, #f8fafc);
+	.dropzone-wrapper {
+		position: relative;
+		width: 100%;
 	}
 
 	.file-input {
-		font-size: 1rem;
-		color: var(--color-text, #f8fafc);
-		padding: 1rem;
-		background: var(--color-primary, #6366f1);
-		border: none;
-		border-radius: 0.5rem;
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		top: 0;
+		left: 0;
+		opacity: 0;
 		cursor: pointer;
+		z-index: 10;
 	}
 
-	.file-input::file-selector-button {
-		padding: 0.75rem 1.5rem;
-		margin-right: 1rem;
-		background: white;
-		color: var(--color-primary, #6366f1);
-		border: none;
-		border-radius: 0.5rem;
+	.dropzone-label {
+		display: block;
+		position: relative;
+		padding: 3rem 2rem;
+		border: 2px dashed var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-bg-glass);
+		cursor: pointer;
+		transition: all 0.3s ease;
+		overflow: hidden;
+	}
+
+	/* Glow effect on hover/drag */
+	.dropzone-label::before {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 100%;
+		height: 100%;
+		background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+		transform: translate(-50%, -50%) scale(0);
+		transition: transform 0.4s ease;
+		pointer-events: none;
+	}
+
+	.dropzone-wrapper.hovering .dropzone-label::before,
+	.dropzone-wrapper.dragging .dropzone-label::before {
+		transform: translate(-50%, -50%) scale(2);
+	}
+
+	.dropzone-wrapper.hovering .dropzone-label,
+	.dropzone-wrapper.dragging .dropzone-label {
+		border-color: var(--color-primary);
+		background: rgba(99, 102, 241, 0.05);
+	}
+
+	.dropzone-wrapper.dragging .dropzone-label {
+		border-style: solid;
+		transform: scale(1.01);
+	}
+
+	.dropzone-wrapper.disabled .dropzone-label {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.dropzone-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.25rem;
+		position: relative;
+		z-index: 1;
+	}
+
+	/* Icon */
+	.icon-wrapper {
+		position: relative;
+		width: 4.5rem;
+		height: 4.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.icon-bg {
+		position: absolute;
+		inset: 0;
+		background: var(--gradient-primary);
+		border-radius: 50%;
+		opacity: 0.15;
+		transition: all 0.3s ease;
+	}
+
+	.dropzone-wrapper.hovering .icon-bg,
+	.dropzone-wrapper.dragging .icon-bg {
+		opacity: 0.25;
+		transform: scale(1.1);
+	}
+
+	.upload-icon {
+		width: 2.5rem;
+		height: 2.5rem;
+		color: var(--color-primary);
+		transition: transform 0.3s ease;
+	}
+
+	.dropzone-wrapper.hovering .upload-icon,
+	.dropzone-wrapper.dragging .upload-icon {
+		transform: translateY(-4px);
+	}
+
+	/* Text */
+	.dropzone-text {
+		text-align: center;
+	}
+
+	.primary-text {
+		font-size: 1.125rem;
 		font-weight: 600;
-		cursor: pointer;
+		color: var(--color-text);
+		margin-bottom: 0.25rem;
 	}
 
-	.upload-hint {
+	.secondary-text {
 		font-size: 0.875rem;
-		color: var(--color-text-secondary, #94a3b8);
+		color: var(--color-text-secondary);
+	}
+
+	.highlight {
+		color: var(--color-primary-light);
+		font-weight: 500;
+	}
+
+	/* Format chips */
+	.format-chips {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.chip {
+		padding: 0.35rem 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		background: var(--color-bg-tertiary);
+		border-radius: 2rem;
+		border: 1px solid var(--color-border);
+		transition: all 0.2s ease;
+	}
+
+	.dropzone-wrapper.hovering .chip,
+	.dropzone-wrapper.dragging .chip {
+		border-color: var(--color-primary);
+		color: var(--color-text);
+	}
+
+	/* Mobile */
+	@media (max-width: 640px) {
+		.dropzone-label {
+			padding: 2rem 1.5rem;
+		}
+
+		.icon-wrapper {
+			width: 3.5rem;
+			height: 3.5rem;
+		}
+
+		.upload-icon {
+			width: 2rem;
+			height: 2rem;
+		}
+
+		.primary-text {
+			font-size: 1rem;
+		}
+
+		.chip {
+			padding: 0.25rem 0.5rem;
+			font-size: 0.7rem;
+		}
 	}
 </style>
