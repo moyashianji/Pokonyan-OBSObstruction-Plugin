@@ -4,6 +4,7 @@
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import FormatSelector from '$lib/components/FormatSelector.svelte';
 	import ConversionProgress from '$lib/components/ConversionProgress.svelte';
+	import LogPanel, { type LogEntry } from '$lib/components/LogPanel.svelte';
 	import {
 		convertFile,
 		detectFileType,
@@ -19,7 +20,7 @@
 		type: FileType;
 		selectedFormats: string[];
 		state: ConversionState;
-		results: { format: string; url: string; fileName: string }[];
+		results: { format: string; url: string; fileName: string; outputSize?: number }[];
 	}
 
 	let fileItems = $state<FileItem[]>([]);
@@ -27,29 +28,69 @@
 	let mounted = $state(false);
 	let isConverting = $state(false);
 
+	// Logging system
+	let logs = $state<LogEntry[]>([]);
+	let logExpanded = $state(false);
+	let logIdCounter = $state(0);
+	let conversionStartTime = $state<number>(0);
+
+	function addLog(
+		level: LogEntry['level'],
+		message: string,
+		details?: Record<string, string | number>
+	) {
+		logs = [...logs, {
+			id: logIdCounter++,
+			timestamp: new Date(),
+			level,
+			message,
+			details
+		}];
+	}
+
+	function clearLogs() {
+		logs = [];
+	}
+
 	onMount(() => {
 		mounted = true;
 		capabilities = getSystemCapabilities();
 
+		addLog('info', 'システム初期化完了', {
+			WebCodecs: capabilities.webcodecs ? 'Yes' : 'No',
+			SharedArrayBuffer: capabilities.sharedArrayBuffer ? 'Yes' : 'No'
+		});
+
 		if (capabilities.sharedArrayBuffer) {
-			preloadFFmpeg().catch(console.warn);
+			addLog('info', 'FFmpeg.wasm プリロード開始...');
+			preloadFFmpeg()
+				.then(() => addLog('success', 'FFmpeg.wasm 準備完了'))
+				.catch(() => addLog('warning', 'FFmpeg.wasm プリロード失敗 (必要時に再試行)'));
 		}
 	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
-		const newFiles = event.detail.map(file => ({
-			file,
-			type: detectFileType(file),
-			selectedFormats: [] as string[],
-			state: {
-				status: 'idle' as const,
-				progress: 0,
-				message: '',
-				outputUrl: null,
-				outputFileName: null
-			},
-			results: []
-		}));
+		const newFiles = event.detail.map(file => {
+			const type = detectFileType(file);
+			addLog('info', `ファイル追加: ${file.name}`, {
+				size: file.size,
+				type: type || 'unknown',
+				mimeType: file.type || 'unknown'
+			});
+			return {
+				file,
+				type,
+				selectedFormats: [] as string[],
+				state: {
+					status: 'idle' as const,
+					progress: 0,
+					message: '',
+					outputUrl: null,
+					outputFileName: null
+				},
+				results: []
+			};
+		});
 		fileItems = [...fileItems, ...newFiles];
 	}
 
@@ -80,10 +121,25 @@
 
 	async function startConversion() {
 		isConverting = true;
+		conversionStartTime = performance.now();
+		logExpanded = true; // Auto-expand log panel when starting
+
+		const totalFiles = fileItems.filter(item => item.selectedFormats.length > 0).length;
+		const totalFormats = fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0);
+
+		addLog('info', `変換開始: ${totalFiles}ファイル → ${totalFormats}形式`, {
+			parallelJobs: totalFormats
+		});
 
 		// Process all files in parallel
-		const conversionPromises = fileItems.map(async (item, index) => {
+		const conversionPromises = fileItems.map(async (item, fileIndex) => {
 			if (item.selectedFormats.length === 0) return;
+
+			const fileStartTime = performance.now();
+			addLog('debug', `[${item.file.name}] 変換キュー投入`, {
+				inputSize: item.file.size,
+				formats: item.selectedFormats.length
+			});
 
 			item.state = {
 				status: 'converting',
@@ -95,6 +151,9 @@
 
 			// Convert to all selected formats in parallel
 			const formatPromises = item.selectedFormats.map(async (format) => {
+				const formatStartTime = performance.now();
+				addLog('info', `[${item.file.name}] → ${format.toUpperCase()} 開始`);
+
 				try {
 					const result = await convertFile(item.file, format, (state) => {
 						// Update progress (average across formats)
@@ -104,16 +163,55 @@
 							progress: Math.max(currentProgress, state.progress || 0),
 							message: state.message || item.state.message
 						};
+
+						// Log progress milestones
+						if (state.progress && state.progress % 25 === 0 && state.progress > 0) {
+							addLog('debug', `[${item.file.name}] → ${format.toUpperCase()} ${state.progress}%`, {
+								elapsed: performance.now() - formatStartTime
+							});
+						}
+
+						// Log method selection
+						if (state.method && state.progress === 0) {
+							addLog('debug', `[${item.file.name}] 変換エンジン: ${state.method.toUpperCase()}`);
+						}
 					});
-					return { format, url: result.url, fileName: result.fileName };
+
+					// Get output size by fetching the blob
+					const response = await fetch(result.url);
+					const blob = await response.blob();
+					const outputSize = blob.size;
+					const compressionRatio = outputSize / item.file.size;
+					const duration = performance.now() - formatStartTime;
+
+					addLog('success', `[${item.file.name}] → ${format.toUpperCase()} 完了`, {
+						inputSize: item.file.size,
+						outputSize: outputSize,
+						compressionRatio: compressionRatio,
+						duration: duration,
+						speed: (item.file.size / 1024 / 1024) / (duration / 1000)
+					});
+
+					return { format, url: result.url, fileName: result.fileName, outputSize };
 				} catch (error) {
+					const duration = performance.now() - formatStartTime;
+					addLog('error', `[${item.file.name}] → ${format.toUpperCase()} 失敗: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+						duration: duration
+					});
 					console.error(`Failed to convert to ${format}:`, error);
 					return null;
 				}
 			});
 
 			const results = await Promise.all(formatPromises);
-			item.results = results.filter((r): r is { format: string; url: string; fileName: string } => r !== null);
+			item.results = results.filter((r): r is { format: string; url: string; fileName: string; outputSize?: number } => r !== null);
+
+			const fileDuration = performance.now() - fileStartTime;
+			addLog('success', `[${item.file.name}] 全変換完了`, {
+				successCount: item.results.length,
+				failCount: item.selectedFormats.length - item.results.length,
+				totalTime: fileDuration
+			});
 
 			item.state = {
 				status: 'complete',
@@ -125,6 +223,22 @@
 		});
 
 		await Promise.all(conversionPromises);
+
+		const totalDuration = performance.now() - conversionStartTime;
+		const successCount = fileItems.reduce((sum, item) => sum + item.results.length, 0);
+		const totalInputSize = fileItems.reduce((sum, item) => item.selectedFormats.length > 0 ? sum + item.file.size : sum, 0);
+		const totalOutputSize = fileItems.reduce((sum, item) =>
+			sum + item.results.reduce((s, r) => s + (r.outputSize || 0), 0), 0);
+
+		addLog('success', `全処理完了`, {
+			totalFiles: totalFiles,
+			totalFormats: successCount,
+			totalDuration: totalDuration,
+			totalInputSize: totalInputSize,
+			totalOutputSize: totalOutputSize,
+			avgSpeed: (totalInputSize / 1024 / 1024) / (totalDuration / 1000)
+		});
+
 		isConverting = false;
 	}
 
@@ -151,6 +265,8 @@
 			}
 		});
 		fileItems = [];
+		clearLogs();
+		addLog('info', 'リセット完了 - 新しい変換を開始できます');
 	}
 
 	let totalSelectedFormats = $derived(fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0));
@@ -298,6 +414,11 @@
 						{/if}
 					</button>
 				{/if}
+			</div>
+
+			<!-- Log Panel -->
+			<div class="log-section">
+				<LogPanel {logs} bind:expanded={logExpanded} maxHeight="250px" />
 			</div>
 		{/if}
 	</div>
@@ -559,6 +680,13 @@
 		margin-top: 1rem;
 		padding-top: 1rem;
 		border-top: 1px dashed var(--color-border);
+	}
+
+	/* Log Section */
+	.log-section {
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-border);
 	}
 
 	/* Action Bar */
