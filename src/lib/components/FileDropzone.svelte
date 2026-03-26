@@ -11,6 +11,7 @@
 
 	let isDragging = $state(false);
 	let dropzone: HTMLDivElement;
+	let fileInput: HTMLInputElement;
 
 	const dispatch = createEventDispatcher<{ files: File[] }>();
 
@@ -39,19 +40,27 @@
 		const target = e.target as HTMLInputElement;
 		if (target.files && target.files.length > 0) {
 			dispatch('files', Array.from(target.files));
+			// Reset input so the same file can be selected again
+			target.value = '';
 		}
 	}
 
 	function openFileDialog() {
 		if (disabled) return;
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = accept;
-		input.multiple = multiple;
-		input.onchange = handleFileInput;
-		input.click();
+		fileInput?.click();
 	}
 </script>
+
+<input
+	bind:this={fileInput}
+	type="file"
+	{accept}
+	{multiple}
+	onchange={handleFileInput}
+	class="hidden-input"
+	aria-hidden="true"
+	tabindex="-1"
+/>
 
 <div
 	bind:this={dropzone}
@@ -63,6 +72,7 @@
 	ondrop={handleDrop}
 	onclick={openFileDialog}
 	onkeydown={(e) => e.key === 'Enter' && openFileDialog()}
+	ontouchend={(e) => { e.preventDefault(); openFileDialog(); }}
 	role="button"
 	tabindex="0"
 	aria-label="ファイルをドロップまたはクリックして選択"
@@ -84,6 +94,18 @@
 </div>
 
 <style>
+	.hidden-input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	.dropzone {
 		border: 2px dashed var(--color-border);
 		border-radius: 1rem;
