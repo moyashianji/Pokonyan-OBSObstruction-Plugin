@@ -28,7 +28,7 @@ import {
 	FFMPEG_VIDEO_FORMATS,
 	FFMPEG_AUDIO_FORMATS
 } from './ffmpeg-converter';
-import { COMMON_IMAGE_OUTPUTS } from './formats';
+import { COMMON_IMAGE_OUTPUTS, COMMON_VIDEO_OUTPUTS, COMMON_AUDIO_OUTPUTS } from './formats';
 
 export type FileType = 'image' | 'audio' | 'video' | 'document' | null;
 export type ConversionStatus = 'idle' | 'loading' | 'converting' | 'complete' | 'error';
@@ -74,12 +74,13 @@ export function getOutputFormats(fileType: FileType): string[] {
 	switch (fileType) {
 		case 'image':
 			// Canvas API handles all common image formats
-			return [...getSupportedImageFormats()];
+			// Return expanded list from formats.ts
+			return [...COMMON_IMAGE_OUTPUTS];
 
 		case 'audio':
 			// Web Audio API for WAV, FFmpeg for others
 			if (ffmpegAvailable) {
-				return ['wav', 'mp3', 'aac', 'ogg', 'flac', 'm4a', 'opus', 'wma', 'aiff'];
+				return [...COMMON_AUDIO_OUTPUTS];
 			}
 			return ['wav']; // Native only
 
@@ -91,16 +92,17 @@ export function getOutputFormats(fileType: FileType): string[] {
 				WEBCODECS_VIDEO_OUTPUTS.forEach(f => formats.add(f));
 			}
 
-			// FFmpeg formats (full support)
+			// FFmpeg formats (full support) - expanded list
 			if (ffmpegAvailable) {
-				FFMPEG_VIDEO_FORMATS.forEach(f => formats.add(f));
+				COMMON_VIDEO_OUTPUTS.forEach(f => formats.add(f));
 			}
 
 			// Always available: frame/audio extraction
 			['png', 'jpg', 'webp', 'wav'].forEach(f => formats.add(f));
 
+			// Audio extraction with FFmpeg
 			if (ffmpegAvailable) {
-				['mp3', 'aac', 'ogg', 'flac'].forEach(f => formats.add(f));
+				COMMON_AUDIO_OUTPUTS.forEach(f => formats.add(f));
 			}
 
 			return Array.from(formats);

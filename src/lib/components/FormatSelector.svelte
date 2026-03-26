@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { getOutputFormats } from '$lib/converter';
 	import { VIDEO_FORMATS, AUDIO_FORMATS, IMAGE_FORMATS, type FormatInfo } from '$lib/formats';
+	import Icon from './Icon.svelte';
 
 	interface FormatOption {
 		value: string;
@@ -12,12 +13,21 @@
 
 	interface Props {
 		selectedFormat?: string;
+		selectedFormats?: string[];
+		multiSelect?: boolean;
 		fileType?: 'video' | 'audio' | 'image' | 'document' | null;
+		compact?: boolean;
 	}
 
-	let { selectedFormat = '', fileType = null }: Props = $props();
+	let {
+		selectedFormat = '',
+		selectedFormats = [],
+		multiSelect = false,
+		fileType = null,
+		compact = false
+	}: Props = $props();
 
-	const dispatch = createEventDispatcher<{ select: string }>();
+	const dispatch = createEventDispatcher<{ select: string; toggle: string }>();
 
 	const allFormats: Record<string, FormatInfo> = {
 		...VIDEO_FORMATS,
@@ -26,10 +36,10 @@
 		txt: { label: 'TXT', description: 'テキスト', category: 'image', mimeType: 'text/plain' }
 	};
 
-	const categoryConfig = {
-		video: { label: '動画', icon: '🎬', color: '#8b5cf6' },
-		audio: { label: '音声', icon: '🎵', color: '#06b6d4' },
-		image: { label: '画像', icon: '🖼️', color: '#10b981' }
+	const categoryConfig: Record<string, { label: string; icon: 'video' | 'audio' | 'image'; color: string }> = {
+		video: { label: '動画', icon: 'video', color: '#8b5cf6' },
+		audio: { label: '音声', icon: 'audio', color: '#06b6d4' },
+		image: { label: '画像', icon: 'image', color: '#10b981' }
 	};
 
 	const categoryOrder = ['video', 'audio', 'image'];
@@ -66,25 +76,41 @@
 		return sorted;
 	});
 
-	function selectFormat(format: string) {
-		dispatch('select', format);
+	function isSelected(formatValue: string): boolean {
+		if (multiSelect) {
+			return selectedFormats.includes(formatValue);
+		}
+		return selectedFormat === formatValue;
+	}
+
+	function handleClick(format: string) {
+		if (multiSelect) {
+			dispatch('toggle', format);
+		} else {
+			dispatch('select', format);
+		}
 	}
 </script>
 
-<div class="format-selector">
-	<h3 class="selector-title">
-		<span class="title-icon">🔄</span>
-		変換先の形式
-	</h3>
+<div class="format-selector" class:compact>
+	{#if !compact}
+		<h3 class="selector-title">
+			<Icon name="refresh" size={18} />
+			<span>変換先の形式</span>
+			{#if multiSelect}
+				<span class="multi-hint">複数選択可</span>
+			{/if}
+		</h3>
+	{/if}
 
 	{#if availableFormats.length === 0}
 		<p class="no-formats">利用可能な形式がありません</p>
 	{:else}
 		{#each groupedFormats as [category, formats], i}
-			{@const config = categoryConfig[category as keyof typeof categoryConfig]}
+			{@const config = categoryConfig[category]}
 			<div class="format-group" style="animation-delay: {i * 50}ms">
 				<h4 class="group-header">
-					<span class="group-icon">{config.icon}</span>
+					<Icon name={config.icon} size={14} />
 					<span class="group-label">{config.label}</span>
 					<span class="group-count">{formats.length}</span>
 				</h4>
@@ -92,14 +118,19 @@
 					{#each formats as format, j}
 						<button
 							class="format-btn"
-							class:selected={selectedFormat === format.value}
-							onclick={() => selectFormat(format.value)}
+							class:selected={isSelected(format.value)}
+							onclick={() => handleClick(format.value)}
 							type="button"
 							title={format.description}
-							style="animation-delay: {(i * 50) + (j * 20)}ms"
+							style="animation-delay: {(i * 50) + (j * 15)}ms"
 						>
+							{#if multiSelect && isSelected(format.value)}
+								<span class="check-icon">
+									<Icon name="check" size={10} />
+								</span>
+							{/if}
 							<span class="format-name">{format.label}</span>
-							{#if format.description}
+							{#if format.description && !compact}
 								<span class="format-desc">{format.description}</span>
 							{/if}
 						</button>
@@ -115,6 +146,10 @@
 		width: 100%;
 	}
 
+	.format-selector.compact {
+		font-size: 0.9em;
+	}
+
 	.selector-title {
 		display: flex;
 		align-items: center;
@@ -125,8 +160,14 @@
 		margin-bottom: 1rem;
 	}
 
-	.title-icon {
-		font-size: 1.125rem;
+	.multi-hint {
+		margin-left: auto;
+		font-size: 0.7rem;
+		font-weight: 500;
+		color: var(--color-primary-light);
+		background: rgba(99, 102, 241, 0.1);
+		padding: 0.2rem 0.5rem;
+		border-radius: 1rem;
 	}
 
 	.no-formats {
@@ -137,7 +178,7 @@
 	}
 
 	.format-group {
-		margin-bottom: 1.25rem;
+		margin-bottom: 1rem;
 		animation: fadeInUp 0.3s ease-out backwards;
 	}
 
@@ -159,14 +200,10 @@
 	.group-header {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.4rem;
 		margin-bottom: 0.5rem;
 		padding-bottom: 0.35rem;
 		border-bottom: 1px solid var(--color-border);
-	}
-
-	.group-icon {
-		font-size: 0.875rem;
 	}
 
 	.group-label {
@@ -189,24 +226,35 @@
 
 	.format-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-		gap: 0.4rem;
+		grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+		gap: 0.35rem;
+	}
+
+	.compact .format-grid {
+		grid-template-columns: repeat(auto-fill, minmax(55px, 1fr));
+		gap: 0.25rem;
 	}
 
 	.format-btn {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: 0.6rem 0.4rem;
-		min-height: 52px;
+		padding: 0.5rem 0.3rem;
+		min-height: 48px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		background: var(--color-bg-glass);
 		color: var(--color-text);
 		cursor: pointer;
 		transition: all 0.15s ease;
-		animation: fadeInUp 0.3s ease-out backwards;
+		animation: fadeInUp 0.25s ease-out backwards;
+	}
+
+	.compact .format-btn {
+		padding: 0.4rem 0.2rem;
+		min-height: 40px;
 	}
 
 	.format-btn:hover {
@@ -226,16 +274,34 @@
 		box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 	}
 
+	.check-icon {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		width: 14px;
+		height: 14px;
+		background: white;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-primary);
+	}
+
 	.format-name {
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		font-weight: 600;
 		line-height: 1;
 	}
 
+	.compact .format-name {
+		font-size: 0.7rem;
+	}
+
 	.format-desc {
-		font-size: 0.55rem;
+		font-size: 0.5rem;
 		color: var(--color-text-secondary);
-		margin-top: 0.2rem;
+		margin-top: 0.15rem;
 		text-align: center;
 		line-height: 1.2;
 		max-width: 100%;
@@ -251,16 +317,16 @@
 	/* Mobile */
 	@media (max-width: 480px) {
 		.format-grid {
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(5, 1fr);
 		}
 
 		.format-btn {
-			padding: 0.5rem 0.25rem;
-			min-height: 46px;
+			padding: 0.4rem 0.2rem;
+			min-height: 42px;
 		}
 
 		.format-name {
-			font-size: 0.75rem;
+			font-size: 0.7rem;
 		}
 
 		.format-desc {

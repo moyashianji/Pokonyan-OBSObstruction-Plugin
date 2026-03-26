@@ -144,7 +144,10 @@ function buildFFmpegArgs(input: string, output: string, format: string, mimeType
 		case 'flv':
 			return [...baseArgs, '-c:v', 'libx264', '-c:a', 'aac', '-ar', '44100', output];
 		case 'gif':
-			return [...baseArgs, '-vf', 'fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', '-loop', '0', output];
+			// For video: animated GIF with palette optimization; for image: simple conversion
+			return isVideo
+				? [...baseArgs, '-vf', 'fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', '-loop', '0', output]
+				: [...baseArgs, '-f', 'gif', output];
 		case 'apng':
 			return [...baseArgs, '-plays', '0', '-f', 'apng', output];
 		case '3gp':
@@ -227,11 +230,7 @@ function buildFFmpegArgs(input: string, output: string, format: string, mimeType
 			return isVideo
 				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', '-quality', '80', '-f', 'webp', output]
 				: [...baseArgs, '-quality', '80', '-f', 'webp', output];
-		case 'gif':
-			return isVideo
-				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', '-f', 'gif', output]
-				: [...baseArgs, '-f', 'gif', output];
-		case 'bmp':
+	case 'bmp':
 			return isVideo
 				? [...baseArgs, '-ss', '00:00:01', '-vframes', '1', '-f', 'image2', output]
 				: [...baseArgs, '-f', 'image2', output];

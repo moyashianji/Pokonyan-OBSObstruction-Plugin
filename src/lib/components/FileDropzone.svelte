@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	interface Props {
 		accept?: string;
 		multiple?: boolean;
 		disabled?: boolean;
+		compact?: boolean;
 	}
 
-	let { accept = '*', multiple = true, disabled = false }: Props = $props();
+	let { accept = '*', multiple = true, disabled = false, compact = false }: Props = $props();
 
 	let isDragging = $state(false);
 	let isHovering = $state(false);
@@ -49,6 +51,9 @@
 	class:dragging={isDragging}
 	class:hovering={isHovering}
 	class:disabled={disabled}
+	class:compact
+	role="button"
+	tabindex="0"
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
@@ -57,7 +62,7 @@
 >
 	<input
 		type="file"
-		id="file-upload-input"
+		id="file-upload-input-{compact ? 'compact' : 'main'}"
 		accept={accept}
 		multiple={multiple}
 		onchange={handleChange}
@@ -65,34 +70,48 @@
 		class="file-input"
 	/>
 
-	<label for="file-upload-input" class="dropzone-label">
+	<label for="file-upload-input-{compact ? 'compact' : 'main'}" class="dropzone-label">
 		<div class="dropzone-content">
-			<!-- Animated Icon -->
-			<div class="icon-wrapper">
-				<div class="icon-bg"></div>
-				<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-					<polyline points="17 8 12 3 7 8" />
-					<line x1="12" y1="3" x2="12" y2="15" />
-				</svg>
-			</div>
+			{#if compact}
+				<!-- Compact Mode -->
+				<div class="compact-content">
+					<Icon name="plus" size={20} class="add-icon" />
+					<span class="compact-text">ファイルを追加</span>
+				</div>
+			{:else}
+				<!-- Full Mode -->
+				<!-- Animated Icon -->
+				<div class="icon-wrapper">
+					<div class="icon-bg"></div>
+					<Icon name="upload" size={40} class="upload-icon" />
+				</div>
 
-			<!-- Text -->
-			<div class="dropzone-text">
-				<p class="primary-text">
-					ファイルをドロップ
-				</p>
-				<p class="secondary-text">
-					または<span class="highlight">クリックして選択</span>
-				</p>
-			</div>
+				<!-- Text -->
+				<div class="dropzone-text">
+					<p class="primary-text">
+						ファイルをドロップ
+					</p>
+					<p class="secondary-text">
+						または<span class="highlight">クリックして選択</span>
+					</p>
+				</div>
 
-			<!-- Supported formats -->
-			<div class="format-chips">
-				<span class="chip">🎬 動画</span>
-				<span class="chip">🎵 音声</span>
-				<span class="chip">🖼️ 画像</span>
-			</div>
+				<!-- Supported formats -->
+				<div class="format-chips">
+					<span class="chip">
+						<Icon name="video" size={12} />
+						<span>動画</span>
+					</span>
+					<span class="chip">
+						<Icon name="audio" size={12} />
+						<span>音声</span>
+					</span>
+					<span class="chip">
+						<Icon name="image" size={12} />
+						<span>画像</span>
+					</span>
+				</div>
+			{/if}
 		</div>
 	</label>
 </div>
@@ -124,6 +143,30 @@
 		cursor: pointer;
 		transition: all 0.3s ease;
 		overflow: hidden;
+	}
+
+	/* Compact mode */
+	.compact .dropzone-label {
+		padding: 1rem 1.5rem;
+		border-style: dashed;
+		border-width: 1px;
+	}
+
+	.compact-content {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		color: var(--color-text-secondary);
+	}
+
+	.compact-text {
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.compact .dropzone-label:hover .compact-content {
+		color: var(--color-primary);
 	}
 
 	/* Glow effect on hover/drag */
@@ -195,15 +238,13 @@
 		transform: scale(1.1);
 	}
 
-	.upload-icon {
-		width: 2.5rem;
-		height: 2.5rem;
+	.icon-wrapper :global(.upload-icon) {
 		color: var(--color-primary);
 		transition: transform 0.3s ease;
 	}
 
-	.dropzone-wrapper.hovering .upload-icon,
-	.dropzone-wrapper.dragging .upload-icon {
+	.dropzone-wrapper.hovering .icon-wrapper :global(.upload-icon),
+	.dropzone-wrapper.dragging .icon-wrapper :global(.upload-icon) {
 		transform: translateY(-4px);
 	}
 
@@ -238,6 +279,9 @@
 	}
 
 	.chip {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
 		padding: 0.35rem 0.75rem;
 		font-size: 0.75rem;
 		font-weight: 500;
@@ -265,11 +309,6 @@
 			height: 3.5rem;
 		}
 
-		.upload-icon {
-			width: 2rem;
-			height: 2rem;
-		}
-
 		.primary-text {
 			font-size: 1rem;
 		}
@@ -277,6 +316,10 @@
 		.chip {
 			padding: 0.25rem 0.5rem;
 			font-size: 0.7rem;
+		}
+
+		.compact .dropzone-label {
+			padding: 0.75rem 1rem;
 		}
 	}
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
+
 	interface Props {
 		progress: number;
 		status: 'idle' | 'loading' | 'converting' | 'complete' | 'error';
@@ -14,17 +16,15 @@
 	<!-- Status Icon -->
 	<div class="status-icon" class:active={status === 'converting' || status === 'loading'}>
 		{#if status === 'converting' || status === 'loading'}
-			<svg class="icon-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-			</svg>
+			<div class="icon-spin">
+				<Icon name="refresh" size={20} />
+			</div>
 		{:else if status === 'complete'}
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-				<polyline points="20 6 9 17 4 12"/>
-			</svg>
+			<Icon name="check" size={20} />
+		{:else if status === 'error'}
+			<Icon name="x" size={20} />
 		{:else}
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r="10"/>
-			</svg>
+			<Icon name="clock" size={20} />
 		{/if}
 	</div>
 
@@ -77,11 +77,6 @@
 	.status-icon.active {
 		background: var(--gradient-primary);
 		color: white;
-	}
-
-	.status-icon svg {
-		width: 1.25rem;
-		height: 1.25rem;
 	}
 
 	.icon-spin {
@@ -177,11 +172,6 @@
 		.status-icon {
 			width: 2rem;
 			height: 2rem;
-		}
-
-		.status-icon svg {
-			width: 1rem;
-			height: 1rem;
 		}
 
 		.progress-message {
