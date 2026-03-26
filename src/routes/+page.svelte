@@ -80,14 +80,8 @@
 		};
 	}
 
-	// Preload FFmpeg on mount
-	$effect(() => {
-		loadFFmpeg((state) => {
-			if (conversionState.status === 'idle') {
-				conversionState = { ...conversionState, ...state };
-			}
-		}).catch(console.error);
-	});
+	// FFmpeg will be loaded when conversion starts
+	// Removed preload to avoid potential errors on page load
 </script>
 
 <svelte:head>
