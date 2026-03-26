@@ -1,34 +1,40 @@
-/* Clean Design System */
+/* Design System */
 
 :root {
-	/* Neutral palette */
-	--c-bg: #111113;
-	--c-surface: #19191c;
-	--c-surface-raised: #222226;
-	--c-border: #2e2e33;
-	--c-border-subtle: #252529;
+	/* Background */
+	--c-bg: #0c0c0e;
+	--c-surface: #141416;
+	--c-surface-raised: #1a1a1e;
+	--c-surface-hover: #202024;
+
+	/* Borders */
+	--c-border: #27272b;
+	--c-border-subtle: #1f1f23;
 
 	/* Text */
-	--c-text: #ececef;
-	--c-text-2: #a0a0a8;
-	--c-text-3: #6e6e78;
+	--c-text: #f0f0f2;
+	--c-text-2: #9898a0;
+	--c-text-3: #5c5c66;
 
-	/* Accent - single color, no rainbow */
-	--c-accent: #5b8def;
-	--c-accent-dim: #4a73c4;
-	--c-accent-subtle: rgba(91, 141, 239, 0.12);
+	/* Accent */
+	--c-accent: #6b8afd;
+	--c-accent-hover: #5a7bf0;
+	--c-accent-subtle: rgba(107, 138, 253, 0.1);
 
 	/* Semantic */
-	--c-success: #3fcf8e;
-	--c-success-subtle: rgba(63, 207, 142, 0.12);
-	--c-error: #f06565;
-	--c-error-subtle: rgba(240, 101, 101, 0.12);
-	--c-warning: #e5a84b;
+	--c-success: #4ade80;
+	--c-success-subtle: rgba(74, 222, 128, 0.1);
+	--c-error: #f87171;
+	--c-error-subtle: rgba(248, 113, 113, 0.1);
+	--c-warning: #fbbf24;
 
-	/* Radius - consistent, not excessive */
-	--radius: 8px;
+	/* Radius */
+	--radius: 10px;
 	--radius-sm: 6px;
-	--radius-lg: 12px;
+	--radius-lg: 14px;
+
+	/* Shadow */
+	--shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 1px rgba(0,0,0,0.5);
 }
 
 *, *::before, *::after {
@@ -42,6 +48,7 @@ html {
 	font-size: 15px;
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -56,7 +63,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-	width: 8px;
+	width: 10px;
+	height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -65,7 +73,12 @@ body {
 
 ::-webkit-scrollbar-thumb {
 	background: var(--c-border);
-	border-radius: 4px;
+	border-radius: 5px;
+	border: 2px solid var(--c-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--c-text-3);
 }
 
 :focus-visible {
@@ -73,7 +86,8 @@ body {
 	outline-offset: 2px;
 }
 
-/* Utility */
-@keyframes spin {
-	to { transform: rotate(360deg); }
+/* Animation */
+@keyframes fadeIn {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
 }

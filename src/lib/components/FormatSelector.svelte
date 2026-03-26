@@ -32,7 +32,7 @@
 		txt: { label: 'TXT', description: 'Text', category: 'image', mimeType: 'text/plain' }
 	};
 
-	const categories = {
+	const categories: Record<string, string> = {
 		video: 'Video',
 		audio: 'Audio',
 		image: 'Image'
@@ -69,20 +69,35 @@
 </script>
 
 <div class="selector">
+	<div class="selector-header">
+		<span class="selector-title">Output formats</span>
+		{#if multiSelect && selectedFormats.length > 0}
+			<span class="selected-count">{selectedFormats.length} selected</span>
+		{/if}
+	</div>
+
 	{#if availableFormats.length === 0}
-		<p class="empty">No formats available</p>
+		<p class="empty">No formats available for this file type</p>
 	{:else}
 		{#each groupedFormats as [category, formats]}
 			<div class="group">
-				<div class="group-label">{categories[category as keyof typeof categories]} ({formats.length})</div>
-				<div class="grid">
+				<div class="group-label">
+					{categories[category]}
+					<span class="group-count">{formats.length}</span>
+				</div>
+				<div class="format-grid">
 					{#each formats as format}
 						<button
 							type="button"
-							class="format"
+							class="format-btn"
 							class:selected={isSelected(format.value)}
 							onclick={() => handleClick(format.value)}
 						>
+							{#if multiSelect && isSelected(format.value)}
+								<svg class="check" width="12" height="12" viewBox="0 0 12 12" fill="none">
+									<path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+							{/if}
 							{format.label}
 						</button>
 					{/each}
@@ -96,35 +111,71 @@
 	.selector {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 14px;
+	}
+
+	.selector-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.selector-title {
+		font-size: 12px;
+		font-weight: 550;
+		color: var(--c-text-2);
+	}
+
+	.selected-count {
+		font-size: 11px;
+		color: var(--c-accent);
+		font-weight: 500;
 	}
 
 	.empty {
 		color: var(--c-text-3);
 		font-size: 13px;
 		text-align: center;
-		padding: 12px;
+		padding: 16px;
+	}
+
+	.group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
 
 	.group-label {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 11px;
-		font-weight: 500;
+		font-weight: 550;
 		color: var(--c-text-3);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		margin-bottom: 8px;
 	}
 
-	.grid {
+	.group-count {
+		font-size: 10px;
+		font-weight: 500;
+		color: var(--c-text-3);
+		opacity: 0.6;
+	}
+
+	.format-grid {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
 	}
 
-	.format {
-		padding: 6px 10px;
+	.format-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 6px 12px;
 		font-size: 12px;
-		font-weight: 500;
+		font-weight: 550;
 		color: var(--c-text-2);
 		background: var(--c-surface);
 		border: 1px solid var(--c-border-subtle);
@@ -133,15 +184,19 @@
 		transition: all 0.12s;
 	}
 
-	.format:hover {
+	.format-btn:hover {
 		color: var(--c-text);
 		border-color: var(--c-border);
-		background: var(--c-surface-raised);
+		background: var(--c-surface-hover);
 	}
 
-	.format.selected {
+	.format-btn.selected {
 		color: var(--c-accent);
 		border-color: var(--c-accent);
 		background: var(--c-accent-subtle);
+	}
+
+	.check {
+		margin-left: -2px;
 	}
 </style>

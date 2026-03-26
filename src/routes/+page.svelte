@@ -45,22 +45,22 @@
 	onMount(() => {
 		mounted = true;
 		capabilities = getSystemCapabilities();
-		addLog('info', 'Ready', {
-			WebCodecs: capabilities.webcodecs ? 'OK' : 'N/A',
-			SharedArrayBuffer: capabilities.sharedArrayBuffer ? 'OK' : 'N/A'
+		addLog('info', 'System ready', {
+			WebCodecs: capabilities.webcodecs ? 'available' : 'unavailable',
+			FFmpeg: capabilities.sharedArrayBuffer ? 'available' : 'unavailable'
 		});
 
 		if (capabilities.sharedArrayBuffer) {
 			preloadFFmpeg()
-				.then(() => addLog('success', 'FFmpeg loaded'))
-				.catch(() => addLog('warning', 'FFmpeg load failed'));
+				.then(() => addLog('success', 'FFmpeg initialized'))
+				.catch(() => addLog('warning', 'FFmpeg init failed'));
 		}
 	});
 
 	function handleFiles(event: CustomEvent<File[]>) {
 		const newFiles = event.detail.map(file => {
 			const type = detectFileType(file);
-			addLog('info', `Added: ${file.name}`, { size: file.size });
+			addLog('info', `File added: ${file.name}`, { size: file.size, type: type || 'unknown' });
 			return {
 				file,
 				type,
@@ -94,17 +94,17 @@
 
 		const totalFiles = fileItems.filter(item => item.selectedFormats.length > 0).length;
 		const totalFormats = fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0);
-		addLog('info', `Converting ${totalFiles} file(s) to ${totalFormats} format(s)`);
+		addLog('info', `Starting conversion: ${totalFiles} files → ${totalFormats} outputs`);
 
 		const conversionPromises = fileItems.map(async (item) => {
 			if (item.selectedFormats.length === 0) return;
 
 			const fileStartTime = performance.now();
-			item.state = { status: 'converting', progress: 0, message: 'Starting...', outputUrl: null, outputFileName: null };
+			item.state = { status: 'converting', progress: 0, message: 'Initializing...', outputUrl: null, outputFileName: null };
 
 			const formatPromises = item.selectedFormats.map(async (format) => {
 				const formatStartTime = performance.now();
-				addLog('debug', `${item.file.name} → ${format.toUpperCase()}`);
+				addLog('debug', `Converting: ${item.file.name} → .${format}`);
 
 				try {
 					const result = await convertFile(item.file, format, (state) => {
@@ -119,17 +119,19 @@
 					const blob = await response.blob();
 					const outputSize = blob.size;
 					const duration = performance.now() - formatStartTime;
+					const ratio = ((outputSize / item.file.size) * 100).toFixed(0);
 
-					addLog('success', `${item.file.name} → ${format.toUpperCase()}`, {
-						in: item.file.size,
-						out: outputSize,
+					addLog('success', `Done: ${item.file.name} → .${format}`, {
+						inputSize: item.file.size,
+						outputSize,
+						ratio: `${ratio}%`,
 						time: duration
 					});
 
 					return { format, url: result.url, fileName: result.fileName, outputSize };
 				} catch (error) {
-					addLog('error', `Failed: ${item.file.name} → ${format}`, {
-						error: error instanceof Error ? error.message : 'Unknown'
+					addLog('error', `Failed: ${item.file.name} → .${format}`, {
+						error: error instanceof Error ? error.message : 'Unknown error'
 					});
 					return null;
 				}
@@ -137,13 +139,26 @@
 
 			const results = await Promise.all(formatPromises);
 			item.results = results.filter((r): r is { format: string; url: string; fileName: string; outputSize?: number } => r !== null);
-			item.state = { status: 'complete', progress: 100, message: 'Done', outputUrl: null, outputFileName: null };
 
-			addLog('success', `${item.file.name} complete`, { formats: item.results.length, time: performance.now() - fileStartTime });
+			const totalTime = performance.now() - fileStartTime;
+			addLog('success', `Completed: ${item.file.name}`, {
+				outputs: item.results.length,
+				totalTime
+			});
+
+			item.state = { status: 'complete', progress: 100, message: 'Complete', outputUrl: null, outputFileName: null };
 		});
 
 		await Promise.all(conversionPromises);
-		addLog('success', 'All done', { total: performance.now() - conversionStartTime });
+
+		const totalTime = performance.now() - conversionStartTime;
+		const successCount = fileItems.reduce((sum, item) => sum + item.results.length, 0);
+		addLog('success', `All conversions complete`, {
+			files: totalFiles,
+			outputs: successCount,
+			totalTime
+		});
+
 		isConverting = false;
 	}
 
@@ -167,7 +182,7 @@
 		});
 		fileItems = [];
 		clearLogs();
-		addLog('info', 'Reset');
+		addLog('info', 'Ready for new conversion');
 	}
 
 	let totalSelectedFormats = $derived(fileItems.reduce((sum, item) => sum + item.selectedFormats.length, 0));
@@ -175,57 +190,66 @@
 </script>
 
 <svelte:head>
-	<title>Converter</title>
+	<title>File Converter</title>
 </svelte:head>
 
 <main class="app" class:mounted>
 	<header class="header">
 		<h1>File Converter</h1>
-		<p class="desc">Browser-based conversion. No upload, no server.</p>
+		<p>Convert files locally in your browser. Nothing is uploaded.</p>
 	</header>
 
-	<div class="card">
+	<div class="main-card">
 		{#if fileItems.length === 0}
 			<FileDropzone on:files={handleFiles} disabled={isConverting} />
 		{:else}
 			<div class="file-list">
-				{#each fileItems as item, index}
-					<div class="file-item" class:done={item.state.status === 'complete'}>
-						<div class="file-header">
-							<div class="file-info">
-								<span class="file-name">{item.file.name}</span>
-								<span class="file-meta">
+				{#each fileItems as item, index (item.file.name + index)}
+					<article class="file-card" class:complete={item.state.status === 'complete'}>
+						<header class="file-header">
+							<div class="file-icon">
+								<Icon name={item.type === 'video' ? 'video' : item.type === 'audio' ? 'audio' : 'image'} size={18} />
+							</div>
+							<div class="file-details">
+								<h3 class="file-name">{item.file.name}</h3>
+								<p class="file-meta">
 									{formatFileSize(item.file.size)}
 									{#if item.selectedFormats.length > 0}
-										<span class="arrow">→</span> {item.selectedFormats.length} format{item.selectedFormats.length > 1 ? 's' : ''}
+										<span class="meta-sep">·</span>
+										<span class="format-badge">{item.selectedFormats.length} format{item.selectedFormats.length > 1 ? 's' : ''} selected</span>
 									{/if}
-								</span>
+								</p>
 							</div>
-							<button class="btn-remove" onclick={() => removeFile(index)} disabled={isConverting}>
+							<button class="btn-close" onclick={() => removeFile(index)} disabled={isConverting} title="Remove">
 								<Icon name="x" size={16} />
 							</button>
-						</div>
+						</header>
 
 						{#if item.state.status === 'complete' && item.results.length > 0}
-							<div class="results">
-								{#each item.results as result}
-									<button class="result-item" onclick={() => downloadResult(result)}>
-										<Icon name="download" size={14} />
-										<span>.{result.fileName.split('.').pop()}</span>
-									</button>
-								{/each}
+							<div class="results-section">
+								<div class="results-list">
+									{#each item.results as result}
+										<button class="download-btn" onclick={() => downloadResult(result)}>
+											<Icon name="download" size={14} />
+											<span>.{result.fileName.split('.').pop()}</span>
+											{#if result.outputSize}
+												<span class="size">{formatFileSize(result.outputSize)}</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
 								{#if item.results.length > 1}
-									<button class="result-item all" onclick={() => downloadAllResults(item)}>
-										Download all
+									<button class="download-all" onclick={() => downloadAllResults(item)}>
+										Download all ({item.results.length})
 									</button>
 								{/if}
 							</div>
 						{:else if item.state.status === 'converting'}
-							<div class="progress-wrap">
+							<div class="progress-section">
 								<ConversionProgress progress={item.state.progress} status={item.state.status} message={item.state.message} />
 							</div>
 						{:else}
-							<div class="format-wrap">
+							<div class="format-section">
 								<FormatSelector
 									fileType={item.type}
 									selectedFormats={item.selectedFormats}
@@ -234,169 +258,208 @@
 								/>
 							</div>
 						{/if}
-					</div>
+					</article>
 				{/each}
 			</div>
 
 			{#if !isConverting && !allComplete}
-				<div class="add-section">
+				<div class="add-more">
 					<FileDropzone on:files={handleFiles} compact={true} />
 				</div>
 			{/if}
 
 			<div class="actions">
 				{#if allComplete}
-					<button class="btn" onclick={reset}>New conversion</button>
+					<button class="btn btn-default" onclick={reset}>
+						Start new conversion
+					</button>
 				{:else}
-					<button class="btn secondary" onclick={reset} disabled={isConverting}>Clear</button>
-					<button class="btn primary" disabled={totalSelectedFormats === 0 || isConverting} onclick={startConversion}>
+					<button class="btn btn-ghost" onclick={reset} disabled={isConverting}>
+						Clear all
+					</button>
+					<button
+						class="btn btn-primary"
+						disabled={totalSelectedFormats === 0 || isConverting}
+						onclick={startConversion}
+					>
 						{#if isConverting}
-							<span class="spinner"></span>
+							<span class="btn-spinner"></span>
 							Converting...
 						{:else}
-							Convert {totalSelectedFormats > 0 ? `(${totalSelectedFormats})` : ''}
+							Convert{#if totalSelectedFormats > 0}<span class="btn-badge">{totalSelectedFormats}</span>{/if}
 						{/if}
 					</button>
 				{/if}
 			</div>
 
-			<LogPanel {logs} bind:expanded={logExpanded} maxHeight="200px" />
+			<LogPanel {logs} bind:expanded={logExpanded} maxHeight="220px" />
 		{/if}
 	</div>
 
 	<footer class="footer">
-		<span>Local processing only</span>
-		<span class="sep">·</span>
-		<span>WebCodecs {capabilities.webcodecs ? '✓' : '✗'}</span>
-		<span class="sep">·</span>
-		<span>FFmpeg {capabilities.sharedArrayBuffer ? '✓' : '✗'}</span>
+		<div class="status">
+			<span class="status-item">
+				<span class="dot" class:active={capabilities.webcodecs}></span>
+				WebCodecs
+			</span>
+			<span class="status-item">
+				<span class="dot" class:active={capabilities.sharedArrayBuffer}></span>
+				FFmpeg
+			</span>
+		</div>
 	</footer>
 </main>
 
 <style>
 	.app {
-		max-width: 640px;
+		max-width: 680px;
 		margin: 0 auto;
-		padding: 48px 20px;
+		padding: 48px 24px 32px;
 		opacity: 0;
-		transition: opacity 0.2s;
+		transition: opacity 0.25s ease;
 	}
 
 	.app.mounted {
 		opacity: 1;
 	}
 
+	/* Header */
 	.header {
-		margin-bottom: 32px;
+		margin-bottom: 28px;
 	}
 
 	.header h1 {
-		font-size: 24px;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-		margin-bottom: 4px;
+		font-size: 26px;
+		font-weight: 650;
+		letter-spacing: -0.025em;
+		margin-bottom: 6px;
 	}
 
-	.desc {
+	.header p {
 		color: var(--c-text-2);
-		font-size: 14px;
+		font-size: 15px;
 	}
 
-	.card {
+	/* Main Card */
+	.main-card {
 		background: var(--c-surface);
 		border: 1px solid var(--c-border);
 		border-radius: var(--radius-lg);
-		padding: 20px;
+		padding: 24px;
+		box-shadow: var(--shadow);
 	}
 
+	/* File List */
 	.file-list {
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
 	}
 
-	.file-item {
+	/* File Card */
+	.file-card {
 		background: var(--c-surface-raised);
 		border: 1px solid var(--c-border-subtle);
 		border-radius: var(--radius);
-		padding: 16px;
+		padding: 18px;
+		animation: fadeIn 0.25s ease;
 	}
 
-	.file-item.done {
-		border-color: var(--c-success);
-		border-color: color-mix(in srgb, var(--c-success) 40%, var(--c-border-subtle));
+	.file-card.complete {
+		border-color: color-mix(in srgb, var(--c-success) 30%, var(--c-border-subtle));
 	}
 
 	.file-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: flex-start;
-		gap: 12px;
+		gap: 14px;
 	}
 
-	.file-info {
+	.file-icon {
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--c-accent-subtle);
+		color: var(--c-accent);
+		border-radius: var(--radius-sm);
+		flex-shrink: 0;
+	}
+
+	.file-details {
 		flex: 1;
 		min-width: 0;
 	}
 
 	.file-name {
-		display: block;
-		font-weight: 500;
 		font-size: 14px;
+		font-weight: 550;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		margin-bottom: 2px;
 	}
 
 	.file-meta {
-		display: block;
 		font-size: 12px;
 		color: var(--c-text-3);
-		margin-top: 2px;
 	}
 
-	.arrow {
+	.meta-sep {
+		margin: 0 6px;
+	}
+
+	.format-badge {
 		color: var(--c-accent);
 	}
 
-	.btn-remove {
+	.btn-close {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: none;
 		border: none;
 		color: var(--c-text-3);
-		cursor: pointer;
-		padding: 4px;
 		border-radius: var(--radius-sm);
-		transition: color 0.15s, background 0.15s;
+		cursor: pointer;
+		transition: all 0.15s;
 	}
 
-	.btn-remove:hover:not(:disabled) {
+	.btn-close:hover:not(:disabled) {
 		color: var(--c-error);
 		background: var(--c-error-subtle);
 	}
 
-	.btn-remove:disabled {
+	.btn-close:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
-	.format-wrap, .progress-wrap {
-		margin-top: 16px;
-		padding-top: 16px;
+	/* Sections */
+	.format-section,
+	.progress-section,
+	.results-section {
+		margin-top: 18px;
+		padding-top: 18px;
 		border-top: 1px solid var(--c-border-subtle);
 	}
 
-	.results {
+	/* Results */
+	.results-list {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
-		margin-top: 12px;
+		margin-bottom: 12px;
 	}
 
-	.result-item {
+	.download-btn {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		padding: 6px 12px;
+		padding: 8px 14px;
 		font-size: 13px;
 		font-weight: 500;
 		background: var(--c-success-subtle);
@@ -404,48 +467,62 @@
 		border: none;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: background 0.15s;
+		transition: all 0.15s;
 	}
 
-	.result-item:hover {
-		background: color-mix(in srgb, var(--c-success) 20%, transparent);
+	.download-btn:hover {
+		background: color-mix(in srgb, var(--c-success) 18%, transparent);
 	}
 
-	.result-item.all {
-		background: var(--c-accent-subtle);
-		color: var(--c-accent);
+	.download-btn .size {
+		font-size: 11px;
+		opacity: 0.7;
+		margin-left: 2px;
 	}
 
-	.result-item.all:hover {
-		background: color-mix(in srgb, var(--c-accent) 20%, transparent);
+	.download-all {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--c-text-2);
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 4px 0;
 	}
 
-	.add-section {
-		margin-top: 16px;
-		padding-top: 16px;
+	.download-all:hover {
+		color: var(--c-text);
+	}
+
+	/* Add More */
+	.add-more {
+		margin-top: 18px;
+		padding-top: 18px;
 		border-top: 1px dashed var(--c-border);
 	}
 
+	/* Actions */
 	.actions {
 		display: flex;
-		gap: 8px;
-		margin-top: 20px;
-		padding-top: 16px;
+		gap: 10px;
+		margin-top: 22px;
+		padding-top: 18px;
 		border-top: 1px solid var(--c-border);
 	}
 
+	/* Buttons */
 	.btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 10px 16px;
+		padding: 11px 20px;
 		font-size: 14px;
-		font-weight: 500;
+		font-weight: 550;
 		border: none;
 		border-radius: var(--radius);
 		cursor: pointer;
-		transition: background 0.15s, opacity 0.15s;
+		transition: all 0.15s;
 	}
 
 	.btn:disabled {
@@ -453,50 +530,108 @@
 		cursor: not-allowed;
 	}
 
-	.btn.primary {
+	.btn-primary {
 		flex: 1;
 		background: var(--c-accent);
 		color: white;
 	}
 
-	.btn.primary:hover:not(:disabled) {
-		background: var(--c-accent-dim);
+	.btn-primary:hover:not(:disabled) {
+		background: var(--c-accent-hover);
 	}
 
-	.btn.secondary {
+	.btn-default {
+		flex: 1;
 		background: var(--c-surface-raised);
 		color: var(--c-text);
 		border: 1px solid var(--c-border);
 	}
 
-	.btn.secondary:hover:not(:disabled) {
-		background: var(--c-border-subtle);
+	.btn-default:hover:not(:disabled) {
+		background: var(--c-surface-hover);
 	}
 
-	.spinner {
-		width: 14px;
-		height: 14px;
-		border: 2px solid rgba(255,255,255,0.3);
+	.btn-ghost {
+		background: none;
+		color: var(--c-text-2);
+	}
+
+	.btn-ghost:hover:not(:disabled) {
+		color: var(--c-text);
+		background: var(--c-surface-hover);
+	}
+
+	.btn-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 20px;
+		height: 20px;
+		padding: 0 6px;
+		font-size: 11px;
+		font-weight: 600;
+		background: rgba(255,255,255,0.2);
+		border-radius: 10px;
+	}
+
+	.btn-spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(255,255,255,0.25);
 		border-top-color: white;
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
 	}
 
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	/* Footer */
 	.footer {
-		margin-top: 24px;
-		text-align: center;
+		margin-top: 28px;
+		display: flex;
+		justify-content: center;
+	}
+
+	.status {
+		display: flex;
+		gap: 16px;
+	}
+
+	.status-item {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 12px;
 		color: var(--c-text-3);
 	}
 
-	.sep {
-		margin: 0 6px;
-		opacity: 0.5;
+	.dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--c-text-3);
+		opacity: 0.4;
 	}
 
-	@media (max-width: 480px) {
+	.dot.active {
+		background: var(--c-success);
+		opacity: 1;
+	}
+
+	/* Responsive */
+	@media (max-width: 520px) {
 		.app {
 			padding: 24px 16px;
+		}
+
+		.main-card {
+			padding: 18px;
+		}
+
+		.file-card {
+			padding: 14px;
 		}
 
 		.actions {
@@ -505,6 +640,10 @@
 
 		.btn {
 			width: 100%;
+		}
+
+		.btn-ghost {
+			order: 1;
 		}
 	}
 </style>
